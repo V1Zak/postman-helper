@@ -627,6 +627,14 @@ class PostmanHelperApp {
         document.getElementById('addBodyTemplateBtn').addEventListener('click', () => this.addBodyTemplate());
         document.getElementById('addTestTemplateBtn').addEventListener('click', () => this.addTestTemplate());
 
+        // Auth preset buttons
+        const bearerBtn = document.getElementById('addBearerTokenBtn');
+        if (bearerBtn) bearerBtn.addEventListener('click', () => this.addBearerTokenPreset());
+        const apiKeyBtn = document.getElementById('addApiKeyBtn');
+        if (apiKeyBtn) apiKeyBtn.addEventListener('click', () => this.addApiKeyPreset());
+        const basicAuthBtn = document.getElementById('addBasicAuthBtn');
+        if (basicAuthBtn) basicAuthBtn.addEventListener('click', () => this.addBasicAuthPreset());
+
         // Environment controls
         document.getElementById('manageEnvBtn').addEventListener('click', () => this.showEnvironmentManager());
         document.getElementById('envSelector').addEventListener('change', (e) => {
@@ -968,21 +976,19 @@ class PostmanHelperApp {
     }
 
     updateInheritanceTab() {
-        const inheritanceTab = document.getElementById('inheritanceTab');
-        
         // Update global headers
         const globalHeadersContainer = document.getElementById('globalHeadersContainer');
-        if (Object.keys(this.state.inheritanceManager.getGlobalHeaders()).length === 0) {
+        const headers = this.state.inheritanceManager.getGlobalHeaders();
+        if (headers.length === 0) {
             globalHeadersContainer.innerHTML = '<div class="empty-state" style="padding: 20px;">No global headers defined</div>';
         } else {
             let headersHtml = '';
-            const headers = this.state.inheritanceManager.getGlobalHeaders();
-            for (const [key, value] of Object.entries(headers)) {
+            for (const header of headers) {
                 headersHtml += `
                     <div class="header-row">
-                        <input type="text" class="global-header-key" value="${key}" placeholder="Header Name">
-                        <input type="text" class="global-header-value" value="${value}" placeholder="Header Value">
-                        <button class="remove-global-header-btn" data-key="${key}">❌</button>
+                        <input type="text" class="global-header-key" value="${header.key}" placeholder="Header Name">
+                        <input type="text" class="global-header-value" value="${header.value}" placeholder="Header Value">
+                        <button class="remove-global-header-btn" data-key="${header.key}">❌</button>
                     </div>
                 `;
             }
@@ -1007,6 +1013,59 @@ class PostmanHelperApp {
             baseEndpointsContainer.innerHTML = endpointsHtml;
         }
 
+        // Update body templates
+        const bodyTemplatesContainer = document.getElementById('bodyTemplatesContainer');
+        const bodyTemplates = this.state.inheritanceManager.getBodyTemplates();
+        if (bodyTemplates.length === 0) {
+            bodyTemplatesContainer.innerHTML = '<div class="empty-state" style="padding: 20px;">No body templates defined</div>';
+        } else {
+            let bodyHtml = '';
+            for (const tmpl of bodyTemplates) {
+                const preview = tmpl.content.length > 80 ? tmpl.content.substring(0, 80) + '...' : tmpl.content;
+                bodyHtml += `
+                    <div class="template-card">
+                        <div class="template-card-header">
+                            <strong>${tmpl.name}</strong>
+                            <div class="template-actions">
+                                <button class="template-action-btn apply-body-tmpl-btn" data-name="${tmpl.name}">Apply</button>
+                                <button class="template-action-btn apply-body-tmpl-all-btn" data-name="${tmpl.name}">Apply to All</button>
+                                <button class="template-action-btn create-req-from-tmpl-btn" data-name="${tmpl.name}">+ Request</button>
+                                <button class="template-action-btn remove-body-tmpl-btn" data-name="${tmpl.name}">❌</button>
+                            </div>
+                        </div>
+                        <div class="template-preview">${preview}</div>
+                    </div>
+                `;
+            }
+            bodyTemplatesContainer.innerHTML = bodyHtml;
+        }
+
+        // Update test templates
+        const testTemplatesContainer = document.getElementById('testTemplatesContainer');
+        const testTemplates = this.state.inheritanceManager.getTestTemplates();
+        if (testTemplates.length === 0) {
+            testTemplatesContainer.innerHTML = '<div class="empty-state" style="padding: 20px;">No test templates defined</div>';
+        } else {
+            let testHtml = '';
+            for (const tmpl of testTemplates) {
+                const preview = tmpl.content.length > 80 ? tmpl.content.substring(0, 80) + '...' : tmpl.content;
+                testHtml += `
+                    <div class="template-card">
+                        <div class="template-card-header">
+                            <strong>${tmpl.name}</strong>
+                            <div class="template-actions">
+                                <button class="template-action-btn apply-test-tmpl-btn" data-name="${tmpl.name}">Apply</button>
+                                <button class="template-action-btn apply-test-tmpl-all-btn" data-name="${tmpl.name}">Apply to All</button>
+                                <button class="template-action-btn remove-test-tmpl-btn" data-name="${tmpl.name}">❌</button>
+                            </div>
+                        </div>
+                        <div class="template-preview">${preview}</div>
+                    </div>
+                `;
+            }
+            testTemplatesContainer.innerHTML = testHtml;
+        }
+
         // Set up event listeners for inheritance management
         document.querySelectorAll('.remove-global-header-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -1024,6 +1083,42 @@ class PostmanHelperApp {
                 this.state.markAsChanged();
                 this.updateInheritanceTab();
             });
+        });
+
+        document.querySelectorAll('.remove-body-tmpl-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.state.inheritanceManager.removeBodyTemplate(btn.dataset.name);
+                this.state.markAsChanged();
+                this.updateInheritanceTab();
+            });
+        });
+
+        document.querySelectorAll('.remove-test-tmpl-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.state.inheritanceManager.removeTestTemplate(btn.dataset.name);
+                this.state.markAsChanged();
+                this.updateInheritanceTab();
+            });
+        });
+
+        document.querySelectorAll('.apply-body-tmpl-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.applyBodyTemplateToRequest(btn.dataset.name));
+        });
+
+        document.querySelectorAll('.apply-body-tmpl-all-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.applyBodyTemplateToAll(btn.dataset.name));
+        });
+
+        document.querySelectorAll('.apply-test-tmpl-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.applyTestTemplateToRequest(btn.dataset.name));
+        });
+
+        document.querySelectorAll('.apply-test-tmpl-all-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.applyTestTemplateToAll(btn.dataset.name));
+        });
+
+        document.querySelectorAll('.create-req-from-tmpl-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.createRequestFromTemplate(btn.dataset.name));
         });
     }
 
@@ -1742,6 +1837,145 @@ class PostmanHelperApp {
                     }
                 });
             }
+        });
+    }
+
+    // Template apply methods
+    applyBodyTemplateToRequest(name) {
+        if (!this.state.currentRequest) {
+            this.showToast('Select a request first');
+            return;
+        }
+        const tmpl = this.state.inheritanceManager.getBodyTemplates().find(t => t.name === name);
+        if (!tmpl) return;
+        this.state.currentRequest.body = tmpl.content;
+        this.state.markAsChanged();
+        this.updateTabContent('request');
+        this.showToast(`Applied body template "${name}"`);
+    }
+
+    applyTestTemplateToRequest(name) {
+        if (!this.state.currentRequest) {
+            this.showToast('Select a request first');
+            return;
+        }
+        const tmpl = this.state.inheritanceManager.getTestTemplates().find(t => t.name === name);
+        if (!tmpl) return;
+        this.state.currentRequest.tests = tmpl.content;
+        this.state.markAsChanged();
+        this.updateTabContent('tests');
+        this.showToast(`Applied test template "${name}"`);
+    }
+
+    getAllRequests() {
+        if (!this.state.currentCollection) return [];
+        const all = [...this.state.currentCollection.requests];
+        const collectFromFolders = (folders) => {
+            for (const f of folders) {
+                all.push(...f.requests);
+                if (f.folders) collectFromFolders(f.folders);
+            }
+        };
+        collectFromFolders(this.state.currentCollection.folders || []);
+        return all;
+    }
+
+    applyBodyTemplateToAll(name) {
+        const tmpl = this.state.inheritanceManager.getBodyTemplates().find(t => t.name === name);
+        if (!tmpl) return;
+        const requests = this.getAllRequests();
+        if (requests.length === 0) {
+            this.showToast('No requests to apply to');
+            return;
+        }
+        DialogSystem.showConfirm(`Apply body template "${name}" to all ${requests.length} requests?`, (confirmed) => {
+            if (!confirmed) return;
+            for (const req of requests) {
+                req.body = tmpl.content;
+            }
+            this.state.markAsChanged();
+            this.updateTabContent('request');
+            this.showToast(`Applied to ${requests.length} requests`);
+        });
+    }
+
+    applyTestTemplateToAll(name) {
+        const tmpl = this.state.inheritanceManager.getTestTemplates().find(t => t.name === name);
+        if (!tmpl) return;
+        const requests = this.getAllRequests();
+        if (requests.length === 0) {
+            this.showToast('No requests to apply to');
+            return;
+        }
+        DialogSystem.showConfirm(`Apply test template "${name}" to all ${requests.length} requests?`, (confirmed) => {
+            if (!confirmed) return;
+            for (const req of requests) {
+                req.tests = tmpl.content;
+            }
+            this.state.markAsChanged();
+            this.updateTabContent('tests');
+            this.showToast(`Applied to ${requests.length} requests`);
+        });
+    }
+
+    createRequestFromTemplate(name) {
+        if (!this.state.currentCollection) {
+            this.showToast('Create a collection first');
+            return;
+        }
+        const tmpl = this.state.inheritanceManager.getBodyTemplates().find(t => t.name === name);
+        if (!tmpl) return;
+        DialogSystem.showPrompt('Enter request name:', `New ${name} Request`, (reqName) => {
+            if (!reqName) return;
+            const endpoints = this.state.inheritanceManager.getBaseEndpoints();
+            const url = endpoints.length > 0 ? endpoints[0] : '/';
+            const request = new Request(reqName, 'POST', url);
+            request.body = tmpl.content;
+            this.state.currentCollection.addRequest(request);
+            this.state.setCurrentRequest(request);
+            this.updateCollectionTree();
+            this.switchTab('request');
+            this.state.markAsChanged();
+        });
+    }
+
+    addBearerTokenPreset() {
+        DialogSystem.showPrompt('Enter Bearer token:', '', (token) => {
+            if (token !== null && token.trim()) {
+                this.state.inheritanceManager.addGlobalHeader('Authorization', `Bearer ${token}`);
+                this.state.markAsChanged();
+                this.updateInheritanceTab();
+                this.showToast('Bearer token added as global header');
+            }
+        });
+    }
+
+    addApiKeyPreset() {
+        DialogSystem.showPrompt('Enter header name:', 'X-API-Key', (headerName) => {
+            if (!headerName) return;
+            DialogSystem.showPrompt('Enter API key value:', '', (value) => {
+                if (value !== null && value.trim()) {
+                    this.state.inheritanceManager.addGlobalHeader(headerName, value);
+                    this.state.markAsChanged();
+                    this.updateInheritanceTab();
+                    this.showToast('API key added as global header');
+                }
+            });
+        });
+    }
+
+    addBasicAuthPreset() {
+        DialogSystem.showPrompt('Enter username:', '', (username) => {
+            if (!username) return;
+            DialogSystem.showPrompt('Enter password:', '', (password) => {
+                if (password !== null) {
+                    const encoded = btoa(`${username}:${password}`);
+                    this.state.inheritanceManager.addGlobalHeader('Authorization', `Basic ${encoded}`);
+                    this.state.markAsChanged();
+                    this.updateInheritanceTab();
+                    this.showToast('Basic auth added as global header');
+                }
+            });
         });
     }
 
