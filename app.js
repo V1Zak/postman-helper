@@ -3359,5 +3359,5 @@ document.head.appendChild(style);
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Postman Helper application starting...');
-    new PostmanHelperApp();
+    window.__app = new PostmanHelperApp();
 });

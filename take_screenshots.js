@@ -20,6 +20,10 @@ async function takeScreenshots() {
     // Stub IPC handlers so the app doesn't crash
     ipcMain.handle('save-file', async () => ({ success: false }));
     ipcMain.handle('open-file', async () => ({ success: false }));
+    ipcMain.handle('send-request', async () => ({ success: false, error: 'Not available in screenshot mode' }));
+    ipcMain.handle('auto-save', async () => ({ success: true }));
+    ipcMain.handle('auto-load', async () => ({ success: false }));
+    ipcMain.handle('clear-autosave', async () => ({ success: true }));
 
     await win.loadFile('index.html');
     await delay(2000);
