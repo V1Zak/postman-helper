@@ -2,6 +2,26 @@
 
 A desktop app for creating, managing, and exporting Postman API requests and collections. Built with Electron and vanilla JS.
 
+## Screenshots
+
+### Main Screen
+![Main Screen](screenshots/01-main-screen.png)
+
+### Request Editor
+![Request Editor](screenshots/02-request-editor.png)
+
+### JSON Body Beautify
+![Body Beautify](screenshots/03-body-beautify.png)
+
+### Test Script Editor
+![Tests Tab](screenshots/04-tests-tab.png)
+
+### Request Filtering
+![Filtering](screenshots/05-filtering.png)
+
+### Inheritance Settings
+![Inheritance](screenshots/06-inheritance.png)
+
 ## Features
 
 - **Request Management** — Create, edit, duplicate, and delete API requests with full HTTP method support (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)
