@@ -55,7 +55,8 @@ if (typeof module !== 'undefined' && module.exports) {
 Some files also set `window.models` for browser context (`models.js:228-235`).
 
 ### State Management
-- All state lives in `AppState` (singleton): `currentCollection`, `currentRequest`, `currentFolder`, `unsavedChanges`
+- All state lives in `AppState` (singleton): `collections[]`, `currentCollection`, `currentRequest`, `currentFolder`, `unsavedChanges`
+- Multiple collections supported: `addCollection()`, `removeCollection()`, `setCurrentCollection()` (auto-adds)
 - Mutations must call `state.markAsChanged()` to trigger dirty tracking and status bar updates
 - Manager classes receive `state` (or `app`) via constructor injection
 - UI classes use `init(state)` pattern instead of constructor injection
@@ -79,6 +80,16 @@ Request/Collection/Folder/InheritanceManager classes, then overrides them with
 - `addBodyTemplate()`, `removeBodyTemplate()`, `addTestTemplate()`, `removeTestTemplate()`
 - `addRule(target, source, properties)`, `getRules()`
 - `toJSON()`, `fromJSON()` for serialization
+
+### Inheritance Tab UI (PostmanHelperApp methods)
+- `applyBodyTemplateToRequest(name)`, `applyTestTemplateToRequest(name)` — apply to current request
+- `applyBodyTemplateToAll(name)`, `applyTestTemplateToAll(name)` — bulk apply with confirm dialog
+- `createRequestFromTemplate(name)` — create POST request from body template
+- `addBearerTokenPreset()`, `addApiKeyPreset()`, `addBasicAuthPreset()` — auth presets as global headers
+
+### Auto-save Format
+- **v2** (current): `{version: 2, collections: [...], activeCollectionIndex, ...}`
+- **v1** (legacy): `{version: 1, collection: {...}, ...}` — auto-restore handles both
 
 ## Additional Documentation
 
@@ -180,6 +191,9 @@ Postman Helper is a comprehensive Electron-based application designed to streaml
 | **Model Fallback** | Graceful degradation when models fail | Implemented |
 | **Postman v2.1 Support** | Full Postman Collection format support | Implemented |
 | **Drag and Drop** | Move requests and folders | Implemented |
+| **Multi-Collection** | Multiple collections in sidebar, auto-switch, delete | Implemented |
+| **Inheritance UI** | Apply/bulk-apply body/test templates, auth presets | Implemented |
+| **Deep Text Filter** | Search across name, URL, body, and tests fields | Implemented |
 | **API Documentation** | Generate API documentation | Planned |
 | **Team Collaboration** | Share collections and templates | Planned |
 
