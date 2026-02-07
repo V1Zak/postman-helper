@@ -3,189 +3,20 @@
 
 // Import models using CommonJS syntax
 
-// Import models from window.models (exposed through preload.js) or use built-in fallback
+// Built-in model classes — always defined, then overridden by window.models if available
 let Request, Collection, Folder, InheritanceManager;
 
-// Define model classes - try to use window.models first, fall back to built-in
-
-// First try to load from window.models (exposed by preload.js)
-if (window.models && 
-    window.models.Collection && 
-    window.models.PostmanRequest && 
-    window.models.Folder && 
-    window.models.InheritanceManager) {
-    
-    // Check if Collection has importFromJSON method
-    if (window.models.Collection.prototype.importFromJSON) {
-        Request = window.models.PostmanRequest;
-        Collection = window.models.Collection;
-        Folder = window.models.Folder;
-        InheritanceManager = window.models.InheritanceManager;
-        console.log('✅ Using models from preload.js (with importFromJSON)');
-    } else {
-        console.log('⚠️  window.models.Collection missing importFromJSON, using enhanced fallback');
+Request = class {
+    constructor(name, method, url, headers = {}, body = '', description = '', events = {}) {
+        this.name = name || 'New Request';
+        this.method = method || 'GET';
+        this.url = url || '';
+        this.headers = headers || [];
+        this.body = body || '';
+        this.description = description || '';
+        this.events = events || { prerequest: '', test: '' };
     }
-}
-
-// If window.models not available or incomplete, use enhanced fallback classes
-if (typeof Collection === 'undefined' || typeof Collection.prototype.importFromJSON !== 'function') {
-    console.log('📦 Using enhanced fallback model classes');
-    
-    Request = class {
-        constructor(name, method, url, headers = {}, body = '', description = '', events = {}) {
-            this.name = name || 'New Request';
-            this.method = method || 'GET';
-            this.url = url || '';
-            this.headers = headers || [];
-            this.body = body || '';
-            this.description = description || '';
-            this.events = events || { prerequest: '', test: '' };
-        }
-    };
-
-    Collection = class {
-        constructor(name, description) { 
-            this.name = name || 'New Collection'; 
-            this.description = description || '';
-            this.requests = []; 
-            this.folders = []; 
-        }
-        addRequest(req) { this.requests.push(req); }
-        addFolder(folder) { this.folders.push(folder); }
-        
-        // Enhanced importFromJSON with proper Postman Collection v2.1 support
-        importFromJSON(data) {
-            let dataObj = data;
-            if (typeof data === 'string') {
-                try {
-                    dataObj = JSON.parse(data);
-                } catch (e) {
-                    console.error('Failed to parse JSON:', e);
-                    return this;
-                }
-            }
-            
-            // Handle Postman Collection v2.1 format
-            if (dataObj.info) {
-                // This is a full Postman collection format
-                this.name = dataObj.info.name || this.name;
-                if (dataObj.item) {
-                    // Postman uses 'item' array for requests/folders
-                    this.processPostmanItems(dataObj.item);
-                }
-            } else {
-                // Simple format - direct property copying
-                if (dataObj.name) this.name = dataObj.name;
-                if (dataObj.description) this.description = dataObj.description;
-                if (dataObj.requests) this.requests = dataObj.requests;
-                if (dataObj.folders) this.folders = dataObj.folders;
-            }
-            
-            return this;
-        }
-        
-        processPostmanItems(items) {
-            if (!items || !Array.isArray(items)) return;
-            
-            items.forEach(item => {
-                if (item.request) {
-                    // This is a request
-                    const req = this.createRequestFromPostmanItem(item);
-                    this.requests.push(req);
-                } else if (item.name && item.item) {
-                    // This is a folder
-                    const folder = this.createFolderFromPostmanItem(item);
-                    this.folders.push(folder);
-                }
-            });
-        }
-        
-        createRequestFromPostmanItem(item) {
-            const headers = {};
-            if (item.request.header && Array.isArray(item.request.header)) {
-                item.request.header.forEach(h => { if (h.key) headers[h.key] = h.value || ''; });
-            }
-            const req = new Request(
-                item.name || 'Unnamed Request',
-                (item.request.method || 'GET').toUpperCase(),
-                item.request.url.raw || item.request.url || '/',
-                headers,
-                item.request.body ? (item.request.body.raw || JSON.stringify(item.request.body, null, 2)) : ''
-            );
-            req.description = item.request.description || '';
-            return req;
-        }
-        
-        createFolderFromPostmanItem(item) {
-            const folder = {
-                name: item.name || 'Unnamed Folder',
-                requests: [],
-                folders: []
-            };
-            
-            if (item.item) {
-                item.item.forEach(subItem => {
-                    if (subItem.request) {
-                        folder.requests.push(this.createRequestFromPostmanItem(subItem));
-                    }
-                });
-            }
-            
-            return folder;
-        }
-    };
-
-Folder = class {
-    constructor(name) { 
-        this.name = name || 'New Folder'; 
-        this.requests = []; 
-        this.folders = []; 
-    }
-    addRequest(req) { this.requests.push(req); }
 };
-
-    InheritanceManager = class {
-        constructor() {
-            this.globalHeaders = [];
-            this.baseEndpoints = [];
-            this.bodyTemplates = [];
-            this.testTemplates = [];
-            this.rules = [];
-        }
-        getGlobalHeaders() { return this.globalHeaders; }
-        getBaseEndpoints() { return this.baseEndpoints; }
-        getBodyTemplates() { return this.bodyTemplates; }
-        getTestTemplates() { return this.testTemplates; }
-        processRequest(req) { return {...req}; }
-        setGlobalHeaders(h) { this.globalHeaders = h; }
-        addBaseEndpoint(e) { this.baseEndpoints.push(e); }
-        addGlobalHeader(key, value) {
-            this.globalHeaders.push({ key, value });
-        }
-        addBodyTemplate(name, content) {
-            this.bodyTemplates.push({ name, content });
-        }
-        addTestTemplate(name, content) {
-            this.testTemplates.push({ name, content });
-        }
-        removeGlobalHeader(key) {
-            this.globalHeaders = this.globalHeaders.filter(h => h.key !== key);
-        }
-        removeBaseEndpoint(endpoint) {
-            this.baseEndpoints = this.baseEndpoints.filter(e => e !== endpoint);
-        }
-        removeBodyTemplate(name) {
-            this.bodyTemplates = this.bodyTemplates.filter(t => t.name !== name);
-        }
-        removeTestTemplate(name) {
-            this.testTemplates = this.testTemplates.filter(t => t.name !== name);
-        }
-        addRule(target, source, properties) {
-            this.rules.push({ target, source, properties });
-        }
-        getRules() { return this.rules; }
-    };
-}
 
 Collection = class {
     constructor(name, description) {
@@ -450,15 +281,16 @@ Collection = class {
 };
 
 Folder = class {
-    constructor(name) { 
-        this.name = name || 'New Folder'; 
-        this.requests = []; 
-        this.folders = []; 
+    constructor(name) {
+        this.name = name || 'New Folder';
+        this.requests = [];
+        this.folders = [];
     }
     addRequest(req) { this.requests.push(req); }
+    addFolder(folder) { this.folders.push(folder); }
 };
 
-    InheritanceManager = class {
+InheritanceManager = class {
         constructor() {
             this.globalHeaders = [];
             this.baseEndpoints = [];
@@ -528,69 +360,6 @@ try {
     }
 } catch (error) {
     console.log('Using built-in model classes (window.models not available):', error.message);
-}
-
-// Ensure all model classes are defined before AppState
-if (typeof InheritanceManager === 'undefined') {
-    InheritanceManager = class {
-        constructor() {
-            this.globalHeaders = [];
-            this.baseEndpoints = [];
-            this.bodyTemplates = [];
-            this.testTemplates = [];
-            this.rules = [];
-        }
-        getGlobalHeaders() { return this.globalHeaders; }
-        getBaseEndpoints() { return this.baseEndpoints; }
-        getBodyTemplates() { return this.bodyTemplates; }
-        getTestTemplates() { return this.testTemplates; }
-        processRequest(req) { return {...req}; }
-        setGlobalHeaders(h) { this.globalHeaders = h; }
-        addBaseEndpoint(e) { this.baseEndpoints.push(e); }
-        addGlobalHeader(key, value) {
-            this.globalHeaders.push({ key, value });
-        }
-        addBodyTemplate(name, content) {
-            this.bodyTemplates.push({ name, content });
-        }
-        addTestTemplate(name, content) {
-            this.testTemplates.push({ name, content });
-        }
-        removeGlobalHeader(key) {
-            this.globalHeaders = this.globalHeaders.filter(h => h.key !== key);
-        }
-        removeBaseEndpoint(endpoint) {
-            this.baseEndpoints = this.baseEndpoints.filter(e => e !== endpoint);
-        }
-        removeBodyTemplate(name) {
-            this.bodyTemplates = this.bodyTemplates.filter(t => t.name !== name);
-        }
-        removeTestTemplate(name) {
-            this.testTemplates = this.testTemplates.filter(t => t.name !== name);
-        }
-        addRule(target, source, properties) {
-            this.rules.push({ target, source, properties });
-        }
-        getRules() { return this.rules; }
-        toJSON() {
-            return {
-                globalHeaders: this.globalHeaders,
-                baseEndpoints: this.baseEndpoints,
-                bodyTemplates: this.bodyTemplates,
-                testTemplates: this.testTemplates,
-                rules: this.rules
-            };
-        }
-        static fromJSON(data) {
-            const mgr = new InheritanceManager();
-            mgr.globalHeaders = data.globalHeaders || [];
-            mgr.baseEndpoints = data.baseEndpoints || [];
-            mgr.bodyTemplates = data.bodyTemplates || [];
-            mgr.testTemplates = data.testTemplates || [];
-            mgr.rules = data.rules || [];
-            return mgr;
-        }
-    };
 }
 
 // Custom Dialog System - Replacement for prompt() and confirm()
@@ -1611,36 +1380,6 @@ class PostmanHelperApp {
 
         // Set up drag and drop for the new tree elements
         this.setupDragAndDrop();
-
-        // Set up click handlers (use closest() since clicks may land on child spans)
-        document.querySelectorAll('.tree-item[data-type="request"]').forEach(item => {
-            item.addEventListener('click', (e) => {
-                const treeItem = e.target.closest('.tree-item[data-type="request"]');
-                if (!treeItem) return;
-                const requestName = treeItem.dataset.id;
-                const request = this.state.currentCollection.requests.find(r => r.name === requestName);
-                if (request) {
-                    this.state.setCurrentRequest(request);
-                    this.state.setCurrentFolder(null);
-                    this.updateCollectionTree();
-                    this.switchTab('request');
-                }
-            });
-        });
-
-        document.querySelectorAll('.tree-item[data-type="folder"]').forEach(item => {
-            item.addEventListener('click', (e) => {
-                const treeItem = e.target.closest('.tree-item[data-type="folder"]');
-                if (!treeItem) return;
-                const folderName = treeItem.dataset.id;
-                const folder = this.findFolderByName(this.state.currentCollection.folders, folderName);
-                if (folder) {
-                    this.state.setCurrentFolder(folder);
-                    this.state.setCurrentRequest(null);
-                    this.updateCollectionTree();
-                }
-            });
-        });
     }
 
     renderCollapsibleFolder(folder, depth = 0) {

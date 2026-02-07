@@ -31,22 +31,6 @@ tests/               — Node.js test suite (node:test + node:assert)
   test_ui.js         — DOM/UI structure tests
   test_doc_claims.js — Documentation verification tests
   test_main_ipc.js   — main.js IPC handler tests
-
-src/managers/ (16 files) — Refactoring stubs (not imported by app.js):
-  createNewRequest.js, createNewFolder.js, createNewCollection.js,
-  saveRequest.js, saveTests.js, deleteRequest.js, duplicateRequest.js,
-  importCollection.js, exportCollection.js, loadSampleData.js,
-  addGlobalHeader.js, addBaseEndpoint.js, addBodyTemplate.js,
-  addTestTemplate.js, addRequestHeader.js, showSettings.js
-
-src/ui/ (11 files) — UI rendering and event modules:
-  initUI.js, setupEventListeners.js, handleKeyboardShortcuts.js,
-  switchTab.js, updateTabContent.js, updateRequestTab.js,
-  updateTestsTab.js, updateInheritanceTab.js,
-  updateCollectionTree.js, renderFolderTree.js, renderHeaders.js
-
-src/utils/
-  findFolderByName.js — Recursive folder lookup helper
 ```
 
 ## Essential Commands
@@ -80,9 +64,9 @@ Some files also set `window.models` for browser context (`models.js:228-235`).
 Try-catch with `console.error()` + `alert()` for user-facing operations.
 
 ### Context Isolation
-`preload.js` exposes models via `contextBridge`. If that fails (sandboxed env),
-`app.js` defines duplicate fallback classes (lines 30-585).
-The unconditional Collection/Folder/InheritanceManager classes (lines 186-585) are the actual live code.
+`preload.js` exposes models via `contextBridge`. `app.js` always defines built-in
+Request/Collection/Folder/InheritanceManager classes, then overrides them with
+`window.models` from preload if available.
 
 ### Postman v2.1 Support
 - **Import**: `Collection.importFromJSON()` auto-detects format via `dataObj.info` presence
@@ -178,7 +162,7 @@ Postman Helper is a comprehensive Electron-based application designed to streaml
 - **Responsive Design**: Adapts to different screen sizes
 - **Dark/Light Mode**: User-selectable themes
 - **Keyboard Shortcuts**: Efficient navigation and operations
-- **Drag and Drop**: Move requests and folders (planned feature)
+- **Drag and Drop**: Move requests and folders between collections and folders
 - **Context Menus**: Right-click functionality for quick actions
 - **Status Indicators**: Visual feedback for request status
 
@@ -195,7 +179,7 @@ Postman Helper is a comprehensive Electron-based application designed to streaml
 | **Dialog System** | Custom dialogs replacing browser prompts | Implemented |
 | **Model Fallback** | Graceful degradation when models fail | Implemented |
 | **Postman v2.1 Support** | Full Postman Collection format support | Implemented |
-| **Drag and Drop** | Move requests and folders | Planned |
+| **Drag and Drop** | Move requests and folders | Implemented |
 | **API Documentation** | Generate API documentation | Planned |
 | **Team Collaboration** | Share collections and templates | Planned |
 
@@ -363,7 +347,7 @@ User Interaction → UI Components → Event Handlers → State Management
 - Model loading — intelligent fallback when models fail to load
 
 ### Phase 3: Enhancements (Next)
-- Drag and drop — move requests and folders (partially implemented, disabled due to stability)
+- Drag and drop — move requests and folders between collections and folders
 - Advanced search — full-text search across requests
 - API documentation — generate documentation from requests
 - Team collaboration — share collections and templates
