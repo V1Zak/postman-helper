@@ -1,0 +1,774 @@
+{
+  "files_tested": 46,
+  "functions_tested": 160,
+  "errors_found": 0,
+  "warnings_found": 129,
+  "passed_tests": 46,
+  "failed_tests": 0,
+  "file_results": {
+    "preload.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 15: console.log statement found",
+        "Line 17: console.log statement found"
+      ],
+      "function_errors": [],
+      "functions_found": []
+    },
+    "test_identifier_conflicts.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 5: console.log statement found",
+        "Line 8: console.log statement found",
+        "Line 11: console.log statement found",
+        "Line 13: console.log statement found",
+        "Line 17: console.log statement found",
+        "Line 20: console.log statement found",
+        "Line 22: console.log statement found",
+        "Line 26: console.log statement found",
+        "Line 42: console.log statement found",
+        "Line 46: console.log statement found",
+        "Line 52: console.log statement found",
+        "Line 56: console.log statement found",
+        "Line 59: console.log statement found",
+        "Line 61: console.log statement found",
+        "Line 65: console.log statement found",
+        "Line 68: console.log statement found",
+        "Line 70: console.log statement found",
+        "Line 74: console.log statement found",
+        "Line 76: console.log statement found",
+        "Line 79: console.log statement found",
+        "Line 82: console.log statement found"
+      ],
+      "function_errors": [],
+      "functions_found": []
+    },
+    "test_maincontent.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 2: console.log statement found",
+        "Line 30: console.log statement found",
+        "Line 31: console.log statement found",
+        "Line 32: console.log statement found",
+        "Line 36: console.log statement found",
+        "Line 38: console.log statement found",
+        "Line 41: console.log statement found"
+      ],
+      "function_errors": [],
+      "functions_found": []
+    },
+    "models.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 191: Line too long (154 characters)",
+        "Line 204: Line too long (124 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class PostmanRequest",
+        "PostmanRequest",
+        "class Collection",
+        "Collection",
+        "class Folder",
+        "Folder",
+        "class InheritanceManager",
+        "InheritanceManager"
+      ]
+    },
+    "main.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 17: console.log statement found"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "function createWindow",
+        "createWindow"
+      ]
+    },
+    "test_import_functionality.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 7: console.log statement found",
+        "Line 22: console.log statement found",
+        "Line 23: console.log statement found",
+        "Line 24: console.log statement found",
+        "Line 25: console.log statement found",
+        "Line 31: console.log statement found",
+        "Line 77: console.log statement found",
+        "Line 78: console.log statement found",
+        "Line 79: console.log statement found",
+        "Line 80: console.log statement found",
+        "Line 83: console.log statement found",
+        "Line 87: console.log statement found",
+        "Line 94: console.log statement found",
+        "Line 105: console.log statement found",
+        "Line 106: console.log statement found",
+        "Line 107: console.log statement found",
+        "Line 112: console.log statement found"
+      ],
+      "function_errors": [],
+      "functions_found": []
+    },
+    "test_electron.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "function createWindow",
+        "createWindow"
+      ]
+    },
+    "app.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 24: console.log statement found",
+        "Line 26: console.log statement found",
+        "Line 32: console.log statement found",
+        "Line 277: Line too long (154 characters)",
+        "Line 290: Line too long (124 characters)",
+        "Line 519: console.log statement found",
+        "Line 724: Line too long (141 characters)",
+        "Line 725: Line too long (147 characters)",
+        "Line 726: Line too long (144 characters)",
+        "Line 727: Line too long (144 characters)",
+        "Line 755: Line too long (191 characters)",
+        "Line 899: Line too long (125 characters)",
+        "Line 900: Line too long (122 characters)",
+        "Line 902: Line too long (128 characters)",
+        "Line 926: Line too long (163 characters)",
+        "Line 974: Line too long (129 characters)",
+        "Line 994: Line too long (129 characters)",
+        "Line 1001: Line too long (130 characters)",
+        "Line 1039: Line too long (272 characters)",
+        "Line 1049: Line too long (150 characters)",
+        "Line 1050: Line too long (387 characters)",
+        "Line 1142: Line too long (151 characters)",
+        "Line 1200: Line too long (187 characters)",
+        "Line 1204: Line too long (150 characters)",
+        "Line 1211: Line too long (153 characters)",
+        "Line 1380: Line too long (125 characters)",
+        "Line 1396: Line too long (126 characters)",
+        "Line 1504: Line too long (170 characters)",
+        "Line 1966: Line too long (126 characters)",
+        "Line 1976: Line too long (153 characters)",
+        "Line 2067: console.log statement found"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class DialogSystem",
+        "DialogSystem",
+        "class AppState",
+        "AppState",
+        "class not",
+        "not",
+        "class\nclass",
+        "class",
+        "class from",
+        "from",
+        "class to",
+        "to"
+      ]
+    },
+    "tests/test_main_ipc.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "function createWindow",
+        "createWindow"
+      ]
+    },
+    "tests/test_dialog_system.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": []
+    },
+    "tests/test_ui.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class initially",
+        "initially"
+      ]
+    },
+    "tests/test_import_export.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": []
+    },
+    "tests/test_appstate.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 62: Line too long (195 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class in",
+        "in"
+      ]
+    },
+    "tests/test_app_models.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 31: Line too long (133 characters)",
+        "Line 253: Line too long (121 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": []
+    },
+    "tests/test_doc_claims.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": []
+    },
+    "tests/test_models.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 24: Line too long (167 characters)",
+        "Line 44: Line too long (135 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": []
+    },
+    "tests/helpers/dom_setup.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "function createDOM",
+        "createDOM"
+      ]
+    },
+    "tests/helpers/app_class_extractor.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 47: Line too long (133 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class definitions",
+        "definitions",
+        "function extractAppClasses",
+        "extractAppClasses",
+        "class from",
+        "from"
+      ]
+    },
+    "src/ui/updateTestsTab.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 43: Line too long (129 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class\nclass",
+        "class",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/ui/initUI.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class InitUI",
+        "InitUI",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/ui/setupEventListeners.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class\nclass",
+        "class",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/ui/updateRequestTab.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 54: Line too long (125 characters)",
+        "Line 55: Line too long (122 characters)",
+        "Line 57: Line too long (128 characters)",
+        "Line 76: Line too long (131 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class\nclass",
+        "class",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/ui/handleKeyboardShortcuts.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class\nclass",
+        "class",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/ui/updateCollectionTree.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class\nclass",
+        "class",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/ui/renderHeaders.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 40: Line too long (125 characters)",
+        "Line 41: Line too long (122 characters)",
+        "Line 43: Line too long (128 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class\nclass",
+        "class",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/ui/switchTab.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class\nclass",
+        "class",
+        "class to",
+        "to",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/ui/renderFolderTree.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 19: Line too long (133 characters)",
+        "Line 24: Line too long (130 characters)",
+        "Line 40: Line too long (173 characters)",
+        "Line 45: Line too long (194 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class\nclass",
+        "class",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/ui/updateTabContent.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 35: console.log statement found"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class\nclass",
+        "class",
+        "class to",
+        "to",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/ui/updateInheritanceTab.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 40: Line too long (125 characters)",
+        "Line 41: Line too long (122 characters)",
+        "Line 43: Line too long (128 characters)",
+        "Line 67: Line too long (163 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class\nclass",
+        "class",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/managers/addBaseEndpoint.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 60: Line too long (150 characters)",
+        "Line 132: Line too long (129 characters)",
+        "Line 153: Line too long (129 characters)",
+        "Line 160: Line too long (130 characters)",
+        "Line 174: Line too long (129 characters)",
+        "Line 181: Line too long (140 characters)",
+        "Line 195: Line too long (129 characters)",
+        "Line 202: Line too long (140 characters)",
+        "Line 240: Line too long (151 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class AddBaseEndpoint",
+        "AddBaseEndpoint",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/managers/showSettings.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class ShowSettings",
+        "ShowSettings",
+        "class\nif",
+        "if"
+      ]
+    },
+    "src/managers/createNewFolder.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class CreateNewFolder",
+        "CreateNewFolder",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/managers/addGlobalHeader.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class AddGlobalHeader",
+        "AddGlobalHeader",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/managers/saveRequest.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 75: Line too long (176 characters)",
+        "Line 80: Line too long (175 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class SaveRequest",
+        "SaveRequest",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/managers/addRequestHeader.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 68: Line too long (125 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class AddRequestHeader",
+        "AddRequestHeader",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/managers/addBodyTemplate.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class AddBodyTemplate",
+        "AddBodyTemplate",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/managers/importCollection.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class ImportCollection",
+        "ImportCollection",
+        "class\nif",
+        "if"
+      ]
+    },
+    "src/managers/createNewCollection.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 28: Line too long (129 characters)",
+        "Line 34: Line too long (146 characters)",
+        "Line 35: Line too long (151 characters)",
+        "Line 50: Line too long (129 characters)",
+        "Line 57: Line too long (149 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class CreateNewCollection",
+        "CreateNewCollection",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/managers/addTestTemplate.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class AddTestTemplate",
+        "AddTestTemplate",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/managers/saveTests.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class SaveTests",
+        "SaveTests",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/managers/duplicateRequest.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class DuplicateRequest",
+        "DuplicateRequest",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/managers/loadSampleData.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 12: Line too long (152 characters)",
+        "Line 37: Line too long (126 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class LoadSampleData",
+        "LoadSampleData",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/managers/createNewRequest.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 65: Line too long (272 characters)",
+        "Line 150: Line too long (129 characters)",
+        "Line 171: Line too long (129 characters)",
+        "Line 178: Line too long (130 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class CreateNewRequest",
+        "CreateNewRequest",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/managers/exportCollection.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class ExportCollection",
+        "ExportCollection",
+        "class\nif",
+        "if"
+      ]
+    },
+    "src/managers/deleteRequest.js": {
+      "syntax_valid": true,
+      "linting_passed": true,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [],
+      "function_errors": [],
+      "functions_found": [
+        "class DeleteRequest",
+        "DeleteRequest",
+        "class\nmodule",
+        "module"
+      ]
+    },
+    "src/utils/findFolderByName.js": {
+      "syntax_valid": true,
+      "linting_passed": false,
+      "functions_valid": true,
+      "syntax_errors": [],
+      "linting_warnings": [
+        "Line 97: Line too long (138 characters)",
+        "Line 110: Line too long (142 characters)"
+      ],
+      "function_errors": [],
+      "functions_found": [
+        "class provides",
+        "provides",
+        "class FindFolderByName",
+        "FindFolderByName",
+        "class from",
+        "from",
+        "class to",
+        "to",
+        "function\nmodule",
+        "module"
+      ]
+    }
+  }
+}

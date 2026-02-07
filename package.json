@@ -1,0 +1,28 @@
+{
+  "name": "postman-helper",
+  "version": "1.0.0",
+  "description": "Postman Helper - A Mac OS app for creating and managing Postman API requests",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron . --no-sandbox",
+    "test": "node --test 'tests/test_*.js'",
+    "package": "electron-packager . --platform=darwin --arch=x64 --out=dist"
+  },
+  "keywords": [
+    "postman",
+    "api",
+    "electron",
+    "mac"
+  ],
+  "author": "Agent Zero Development",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "electron": "^30.0.0",
+    "jsdom": "^24.1.3",
+    "semver": "^7.7.3"
+  },
+  "devDependencies": {
+    "electron-packager": "^17.1.2"
+  }
+}
