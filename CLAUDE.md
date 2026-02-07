@@ -37,7 +37,7 @@ tests/               — Node.js test suite (node:test + node:assert)
 
 ```bash
 npm start                    # Run the app (electron . --no-sandbox)
-npm test                     # Run Node.js test suite (155 tests)
+npm test                     # Run Node.js test suite (160 tests)
 python3 test_project.py      # Comprehensive tests: syntax, linting, function checks
 python3 test_features.py     # Feature verification tests
 npm run package              # Build macOS binary to dist/
