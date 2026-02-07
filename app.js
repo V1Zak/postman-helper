@@ -469,6 +469,7 @@ class DialogSystem {
 // AppState class - manages application state
 class AppState {
     constructor() {
+        this.collections = [];
         this.currentCollection = null;
         this.currentRequest = null;
         this.currentFolder = null;
@@ -516,7 +517,27 @@ class AppState {
     }
     setCurrentCollection(collection) {
         this.currentCollection = collection;
+        if (collection && !this.collections.includes(collection)) {
+            this.collections.push(collection);
+        }
         this.unsavedChanges = false;
+    }
+
+    addCollection(collection) {
+        this.collections.push(collection);
+        if (!this.currentCollection) {
+            this.currentCollection = collection;
+        }
+    }
+
+    removeCollection(collection) {
+        const idx = this.collections.indexOf(collection);
+        if (idx !== -1) this.collections.splice(idx, 1);
+        if (this.currentCollection === collection) {
+            this.currentCollection = this.collections[0] || null;
+            this.currentRequest = null;
+            this.currentFolder = null;
+        }
     }
 
     setCurrentRequest(request) {
@@ -537,7 +558,8 @@ class AppState {
         const statusInfo = document.getElementById('statusInfo');
         if (this.currentCollection) {
             const changeIndicator = this.unsavedChanges ? '• ' : '';
-            statusInfo.textContent = `${changeIndicator}${this.currentCollection.name} | ${this.currentCollection.requests.length} requests, ${this.currentCollection.folders.length} folders`;
+            const colCount = this.collections.length > 1 ? ` (${this.collections.length} collections)` : '';
+            statusInfo.textContent = `${changeIndicator}${this.currentCollection.name} | ${this.currentCollection.requests.length} requests, ${this.currentCollection.folders.length} folders${colCount}`;
         } else {
             statusInfo.textContent = 'No collection loaded';
         }
@@ -1357,7 +1379,11 @@ class PostmanHelperApp {
     createNewCollection() {
         DialogSystem.showPrompt('Enter collection name:', 'New Collection', (name) => {
             if (name) {
-                this.state.setCurrentCollection(new Collection(name));
+                const col = new Collection(name);
+                this.state.addCollection(col);
+                this.state.currentCollection = col;
+                this.state.currentRequest = null;
+                this.state.currentFolder = null;
                 this.updateCollectionTree();
                 this.state.markAsChanged();
             }
@@ -1409,68 +1435,74 @@ class PostmanHelperApp {
 
     updateCollectionTree() {
         const collectionTree = document.getElementById('collectionTree');
-        
-        if (!this.state.currentCollection) {
+
+        if (this.state.collections.length === 0) {
             collectionTree.innerHTML = '<div class="empty-state">No collections yet</div>';
             return;
         }
 
         let html = '';
-        
-        // Collection header with collapsible functionality
-        html += `
-            <div class="tree-item collection-item" data-type="collection" data-collapsible="true">
-                <span class="tree-toggle" data-target="collection-root">▶</span>
-                <span class="tree-label">📚 ${this.state.currentCollection.name}</span>
-            </div>
-            <div id="collection-root" class="tree-children" data-drop-target="collection">
-        `;
-
-        // Add requests at root level (filtered)
         const filtering = this.hasFiltersActive();
-        if (this.state.currentCollection.requests && this.state.currentCollection.requests.length > 0) {
-            const visibleRequests = filtering
-                ? this.state.currentCollection.requests.filter(r => this.matchesFilters(r))
-                : this.state.currentCollection.requests;
-            if (visibleRequests.length > 0) {
-                html += '<div class="tree-section">Root Requests:</div>';
-                for (const request of visibleRequests) {
-                    const activeClass = this.state.currentRequest === request ? 'active' : '';
-                    html += `<div class="tree-item ${activeClass}" data-type="request" data-id="${request.name}" draggable="true"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span><span class="request-name">${request.name}</span></div>`;
+
+        for (let index = 0; index < this.state.collections.length; index++) {
+            const collection = this.state.collections[index];
+            const isActive = collection === this.state.currentCollection;
+            const activeClass = isActive ? ' active' : '';
+            const colId = `collection-${index}`;
+
+            html += `
+                <div class="tree-item collection-item${activeClass}" data-type="collection" data-collection-index="${index}" data-collapsible="true">
+                    <span class="tree-toggle" data-target="${colId}">▶</span>
+                    <span class="tree-label">${isActive ? '📚' : '📁'} ${collection.name}</span>
+                </div>
+                <div id="${colId}" class="tree-children" data-drop-target="collection" data-collection-index="${index}">
+            `;
+
+            // Add requests at root level (filtered)
+            if (collection.requests && collection.requests.length > 0) {
+                const visibleRequests = filtering
+                    ? collection.requests.filter(r => this.matchesFilters(r))
+                    : collection.requests;
+                if (visibleRequests.length > 0) {
+                    html += '<div class="tree-section">Root Requests:</div>';
+                    for (const request of visibleRequests) {
+                        const reqActive = this.state.currentRequest === request ? 'active' : '';
+                        html += `<div class="tree-item ${reqActive}" data-type="request" data-id="${request.name}" data-collection-index="${index}" draggable="true"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span><span class="request-name">${request.name}</span></div>`;
+                    }
                 }
             }
-        }
 
-        // Add folders with collapsible functionality (filtered)
-        if (this.state.currentCollection.folders && this.state.currentCollection.folders.length > 0) {
-            const visibleFolders = filtering
-                ? this.state.currentCollection.folders.filter(f => this.folderHasMatchingRequests(f))
-                : this.state.currentCollection.folders;
-            if (visibleFolders.length > 0) {
-                html += '<div class="tree-section">Folders:</div>';
-                for (const folder of visibleFolders) {
-                    html += this.renderCollapsibleFolder(folder, 1);
+            // Add folders with collapsible functionality (filtered)
+            if (collection.folders && collection.folders.length > 0) {
+                const visibleFolders = filtering
+                    ? collection.folders.filter(f => this.folderHasMatchingRequests(f))
+                    : collection.folders;
+                if (visibleFolders.length > 0) {
+                    html += '<div class="tree-section">Folders:</div>';
+                    for (const folder of visibleFolders) {
+                        html += this.renderCollapsibleFolder(folder, 1);
+                    }
                 }
             }
-        }
 
-        // Show no-results message when filtering
-        if (filtering) {
-            const hasRootHits = this.state.currentCollection.requests && this.state.currentCollection.requests.some(r => this.matchesFilters(r));
-            const hasFolderHits = this.state.currentCollection.folders && this.state.currentCollection.folders.some(f => this.folderHasMatchingRequests(f));
-            if (!hasRootHits && !hasFolderHits) {
-                html += '<div class="no-results-msg">No matching requests</div>';
+            // Show no-results message when filtering
+            if (filtering) {
+                const hasRootHits = collection.requests && collection.requests.some(r => this.matchesFilters(r));
+                const hasFolderHits = collection.folders && collection.folders.some(f => this.folderHasMatchingRequests(f));
+                if (!hasRootHits && !hasFolderHits) {
+                    html += '<div class="no-results-msg">No matching requests</div>';
+                }
             }
+
+            html += '</div>'; // Close collection children
         }
 
-        html += '</div>'; // Close collection-root
-        
         collectionTree.innerHTML = html;
 
         // Set up collapsible functionality
         this.setupCollapsibleTree();
 
-        // Set up click handlers for requests and folders
+        // Set up click handlers for requests, folders, and collections
         this.setupTreeClickHandlers();
 
         // Set up drag and drop for the new tree elements
@@ -1539,25 +1571,74 @@ class PostmanHelperApp {
             });
         });
         
-        // Initially collapse all folders (except the first level for better UX)
+        // Initially expand active collection, collapse others
         document.querySelectorAll('.tree-children').forEach(children => {
-            if (children.id !== 'collection-root') {
-                children.style.display = 'none';
-                // Update the corresponding toggle
-                const toggle = document.querySelector(`.tree-toggle[data-target="${children.id}"]`);
-                if (toggle) {
-                    toggle.textContent = '▶';
+            const colIdx = children.dataset.collectionIndex;
+            const isActiveCollection = colIdx !== undefined &&
+                this.state.collections[parseInt(colIdx)] === this.state.currentCollection;
+            // Collection-level children: expand if active, collapse if not
+            if (children.id && children.id.startsWith('collection-')) {
+                if (isActiveCollection) {
+                    children.style.display = 'block';
+                    const toggle = document.querySelector(`.tree-toggle[data-target="${children.id}"]`);
+                    if (toggle) toggle.textContent = '▼';
+                } else {
+                    children.style.display = 'none';
+                    const toggle = document.querySelector(`.tree-toggle[data-target="${children.id}"]`);
+                    if (toggle) toggle.textContent = '▶';
                 }
+            } else {
+                // Folders: collapsed by default
+                children.style.display = 'none';
+                const toggle = document.querySelector(`.tree-toggle[data-target="${children.id}"]`);
+                if (toggle) toggle.textContent = '▶';
             }
         });
     }
     
+    switchToCollectionByIndex(index) {
+        const col = this.state.collections[index];
+        if (col && col !== this.state.currentCollection) {
+            this.state.currentCollection = col;
+            this.state.currentRequest = null;
+            this.state.currentFolder = null;
+            this.state.updateStatusBar();
+            this.updateCollectionTree();
+            this.updateTabContent('request');
+        }
+    }
+
     setupTreeClickHandlers() {
+        // Set up click handlers for collection headers
+        document.querySelectorAll('.tree-item[data-type="collection"]').forEach(item => {
+            item.addEventListener('click', (e) => {
+                if (e.target.classList.contains('tree-toggle')) return;
+                const colIdx = parseInt(item.dataset.collectionIndex);
+                if (!isNaN(colIdx)) {
+                    this.switchToCollectionByIndex(colIdx);
+                }
+            });
+        });
+
         // Set up click handlers for requests (use closest() since clicks may land on child spans)
         document.querySelectorAll('.tree-item[data-type="request"]').forEach(item => {
             item.addEventListener('click', (e) => {
                 const treeItem = e.target.closest('.tree-item[data-type="request"]');
                 if (!treeItem) return;
+
+                // Auto-switch collection if needed
+                const colIdxAttr = treeItem.dataset.collectionIndex ||
+                    (treeItem.closest('[data-collection-index]') || {}).dataset?.collectionIndex;
+                if (colIdxAttr !== undefined) {
+                    const colIdx = parseInt(colIdxAttr);
+                    const col = this.state.collections[colIdx];
+                    if (col && col !== this.state.currentCollection) {
+                        this.state.currentCollection = col;
+                        this.state.currentFolder = null;
+                        this.state.updateStatusBar();
+                    }
+                }
+
                 const requestName = treeItem.dataset.id;
                 let request = this.state.currentCollection.requests.find(r => r.name === requestName);
 
@@ -1989,7 +2070,10 @@ class PostmanHelperApp {
             if (result.success) {
                 const collection = new Collection('Imported Collection');
                 collection.importFromJSON(result.content);
-                this.state.setCurrentCollection(collection);
+                this.state.addCollection(collection);
+                this.state.currentCollection = collection;
+                this.state.currentRequest = null;
+                this.state.currentFolder = null;
                 this.updateCollectionTree();
                 this.switchTab('request');
                 alert('Collection imported successfully!');
@@ -2441,10 +2525,22 @@ class PostmanHelperApp {
                     { label: 'Delete Folder', danger: true, action: () => this.deleteFolder(folder) }
                 ];
             } else if (type === 'collection') {
+                const colIdx = parseInt(treeItem.dataset.collectionIndex);
+                const collection = this.state.collections[colIdx];
+                if (!collection) return;
+                // Switch to this collection for context actions
+                if (collection !== this.state.currentCollection) {
+                    this.state.currentCollection = collection;
+                    this.state.currentRequest = null;
+                    this.state.currentFolder = null;
+                    this.state.updateStatusBar();
+                }
                 items = [
                     { label: 'Rename', action: () => this.renameCollection() },
                     { label: 'Add Request', action: () => this.createNewRequest() },
-                    { label: 'Add Folder', action: () => this.createNewFolder() }
+                    { label: 'Add Folder', action: () => this.createNewFolder() },
+                    { divider: true },
+                    { label: 'Delete Collection', danger: true, action: () => this.deleteCollection(collection) }
                 ];
             }
 
@@ -2556,6 +2652,17 @@ class PostmanHelperApp {
                 this.updateCollectionTree();
                 this.state.updateStatusBar();
             }
+        });
+    }
+
+    deleteCollection(collection) {
+        DialogSystem.showConfirm(`Delete collection "${collection.name}" and all its contents?`, (confirmed) => {
+            if (!confirmed) return;
+            this.state.removeCollection(collection);
+            this.state.markAsChanged();
+            this.updateCollectionTree();
+            this.state.updateStatusBar();
+            this.updateTabContent('request');
         });
     }
 
@@ -3091,9 +3198,10 @@ class PostmanHelperApp {
         if (!window.electronAPI || !window.electronAPI.autoSave) return;
         try {
             const data = {
-                version: 1,
+                version: 2,
                 timestamp: new Date().toISOString(),
-                collection: this.state.currentCollection ? this.state.currentCollection.toPostmanJSON() : null,
+                collections: this.state.collections.map(c => c.toPostmanJSON()),
+                activeCollectionIndex: this.state.collections.indexOf(this.state.currentCollection),
                 currentRequestName: this.state.currentRequest ? this.state.currentRequest.name : null,
                 currentFolderName: this.state.currentFolder ? this.state.currentFolder.name : null,
                 environments: this.state.environments,
@@ -3159,11 +3267,26 @@ class PostmanHelperApp {
                 this.state.inheritanceManager = InheritanceManager.fromJSON(data.inheritance);
             }
 
-            // Restore collection
-            if (data.collection) {
+            // Restore collections (v2 format: array; v1 fallback: single collection)
+            if (data.version >= 2 && data.collections && Array.isArray(data.collections)) {
+                this.state.collections = [];
+                for (const colData of data.collections) {
+                    const col = new Collection('Restored');
+                    col.importFromJSON(colData);
+                    this.state.collections.push(col);
+                }
+                const activeIdx = data.activeCollectionIndex >= 0 && data.activeCollectionIndex < this.state.collections.length
+                    ? data.activeCollectionIndex : 0;
+                this.state.currentCollection = this.state.collections[activeIdx] || null;
+            } else if (data.collection) {
+                // v1 fallback: single collection
                 const collection = new Collection('Restored');
                 collection.importFromJSON(data.collection);
-                this.state.setCurrentCollection(collection);
+                this.state.collections = [collection];
+                this.state.currentCollection = collection;
+            }
+
+            if (this.state.currentCollection) {
                 this.updateCollectionTree();
 
                 // Restore current request selection
