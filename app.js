@@ -1512,7 +1512,7 @@ class PostmanHelperApp {
 
     matchesFilters(request) {
         const f = this.state.filters;
-        if (f.text && !(request.name.toLowerCase().includes(f.text) || (request.url && request.url.toLowerCase().includes(f.text)))) {
+        if (f.text && !(request.name.toLowerCase().includes(f.text) || (request.url && request.url.toLowerCase().includes(f.text)) || (request.body && request.body.toLowerCase().includes(f.text)) || (request.tests && request.tests.toLowerCase().includes(f.text)))) {
             return false;
         }
         if (f.methods.length > 0 && !f.methods.includes(request.method)) {
