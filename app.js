@@ -713,6 +713,8 @@ class AppState {
         this.inheritGlobally = true;
         this.bodyViewMode = 'raw';
         this.filters = { text: '', methods: [], hasTests: false, hasBody: false };
+        this.environments = [];
+        this.activeEnvironment = null;
         // Initialize inheritance manager with proper fallback
         if (typeof InheritanceManager === 'function') {
             this.inheritanceManager = new InheritanceManager();
@@ -759,6 +761,7 @@ class AppState {
     markAsChanged() {
         this.unsavedChanges = true;
         this.updateStatusBar();
+        if (this._onChanged) this._onChanged();
     }
 
     updateStatusBar() {
@@ -776,9 +779,13 @@ class AppState {
 class PostmanHelperApp {
     constructor() {
         this.state = new AppState();
+        this._autoSaveTimer = null;
+        this.state._onChanged = () => this.triggerAutoSave();
         this.initUI();
         this.setupEventListeners();
         this.setupDragAndDrop();
+        this.setupContextMenus();
+        this.loadAutoSave();
         // this.initChangeTracking(); // TODO: Implement change tracking feature
         // this.loadSampleData(); // Disabled due to model loading issues
     }
@@ -850,6 +857,14 @@ class PostmanHelperApp {
         document.getElementById('addBaseEndpointBtn').addEventListener('click', () => this.addBaseEndpoint());
         document.getElementById('addBodyTemplateBtn').addEventListener('click', () => this.addBodyTemplate());
         document.getElementById('addTestTemplateBtn').addEventListener('click', () => this.addTestTemplate());
+
+        // Environment controls
+        document.getElementById('manageEnvBtn').addEventListener('click', () => this.showEnvironmentManager());
+        document.getElementById('envSelector').addEventListener('change', (e) => {
+            this.state.activeEnvironment = e.target.value || null;
+            this.updateUrlPreview();
+            this.triggerAutoSave();
+        });
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboardShortcuts(e));
@@ -1006,21 +1021,21 @@ class PostmanHelperApp {
             </div>
 
             <div class="form-group">
-                <label for="requestMethod">HTTP Method</label>
-                <select id="requestMethod" class="form-control">
-                    <option value="GET" ${this.state.currentRequest.method === 'GET' ? 'selected' : ''}>GET</option>
-                    <option value="POST" ${this.state.currentRequest.method === 'POST' ? 'selected' : ''}>POST</option>
-                    <option value="PUT" ${this.state.currentRequest.method === 'PUT' ? 'selected' : ''}>PUT</option>
-                    <option value="DELETE" ${this.state.currentRequest.method === 'DELETE' ? 'selected' : ''}>DELETE</option>
-                    <option value="PATCH" ${this.state.currentRequest.method === 'PATCH' ? 'selected' : ''}>PATCH</option>
-                    <option value="HEAD" ${this.state.currentRequest.method === 'HEAD' ? 'selected' : ''}>HEAD</option>
-                    <option value="OPTIONS" ${this.state.currentRequest.method === 'OPTIONS' ? 'selected' : ''}>OPTIONS</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="requestUrl">URL</label>
-                <input type="text" id="requestUrl" class="form-control" value="${this.state.currentRequest.url}">
+                <label>URL</label>
+                <div class="url-send-row">
+                    <select id="requestMethod" class="form-control">
+                        <option value="GET" ${this.state.currentRequest.method === 'GET' ? 'selected' : ''}>GET</option>
+                        <option value="POST" ${this.state.currentRequest.method === 'POST' ? 'selected' : ''}>POST</option>
+                        <option value="PUT" ${this.state.currentRequest.method === 'PUT' ? 'selected' : ''}>PUT</option>
+                        <option value="DELETE" ${this.state.currentRequest.method === 'DELETE' ? 'selected' : ''}>DELETE</option>
+                        <option value="PATCH" ${this.state.currentRequest.method === 'PATCH' ? 'selected' : ''}>PATCH</option>
+                        <option value="HEAD" ${this.state.currentRequest.method === 'HEAD' ? 'selected' : ''}>HEAD</option>
+                        <option value="OPTIONS" ${this.state.currentRequest.method === 'OPTIONS' ? 'selected' : ''}>OPTIONS</option>
+                    </select>
+                    <input type="text" id="requestUrl" class="form-control" value="${this.state.currentRequest.url}" placeholder="https://api.example.com/endpoint">
+                    <button id="sendRequestBtn" class="send-btn">Send</button>
+                </div>
+                <div id="urlPreview" class="url-preview" style="display:none;"></div>
             </div>
 
             <div class="form-group">
@@ -1059,6 +1074,17 @@ class PostmanHelperApp {
         document.getElementById('deleteRequestBtn').addEventListener('click', () => this.deleteRequest());
         document.getElementById('duplicateRequestBtn').addEventListener('click', () => this.duplicateRequest());
         document.getElementById('addRequestHeaderBtn').addEventListener('click', () => this.addRequestHeader());
+
+        // Set up Send button
+        const sendBtn = document.getElementById('sendRequestBtn');
+        if (sendBtn) sendBtn.addEventListener('click', () => this.sendRequest());
+
+        // Set up URL preview for environment variables
+        const urlInput = document.getElementById('requestUrl');
+        if (urlInput) {
+            urlInput.addEventListener('input', () => this.updateUrlPreview());
+            this.updateUrlPreview();
+        }
 
         // Set up body toggle
         this.setupBodyToggle();
@@ -2402,6 +2428,792 @@ class PostmanHelperApp {
         this.state.markAsChanged();
         this.updateCollectionTree();
         this.showToast(`Moved folder "${folderName}"`);
+    }
+
+    // ===== Feature 1: Context Menus =====
+
+    setupContextMenus() {
+        const tree = document.getElementById('collectionTree');
+        if (!tree) return;
+
+        tree.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            this.hideContextMenu();
+
+            const treeItem = e.target.closest('.tree-item');
+            if (!treeItem) return;
+
+            const type = treeItem.dataset.type;
+            const id = treeItem.dataset.id;
+            let items = [];
+
+            if (type === 'request') {
+                const request = this.findRequestByName(id);
+                if (!request) return;
+                items = [
+                    { label: 'Rename', action: () => this.renameRequest(request) },
+                    { label: 'Duplicate', action: () => this.duplicateRequestDirect(request) },
+                    { label: 'Move to Folder', action: () => this.moveRequestToFolder(request) },
+                    { divider: true },
+                    { label: 'Delete', danger: true, action: () => this.deleteRequestDirect(request) }
+                ];
+            } else if (type === 'folder') {
+                const folder = this.findFolderByName(this.state.currentCollection.folders, id);
+                if (!folder) return;
+                items = [
+                    { label: 'Rename', action: () => this.renameFolder(folder) },
+                    { label: 'Add Request', action: () => this.addRequestToFolder(folder) },
+                    { label: 'Add Subfolder', action: () => this.addSubfolder(folder) },
+                    { divider: true },
+                    { label: 'Delete Folder', danger: true, action: () => this.deleteFolder(folder) }
+                ];
+            } else if (type === 'collection') {
+                items = [
+                    { label: 'Rename', action: () => this.renameCollection() },
+                    { label: 'Add Request', action: () => this.createNewRequest() },
+                    { label: 'Add Folder', action: () => this.createNewFolder() }
+                ];
+            }
+
+            if (items.length > 0) {
+                this.showContextMenu(e.clientX, e.clientY, items);
+            }
+        });
+    }
+
+    showContextMenu(x, y, items) {
+        this.hideContextMenu();
+        const menu = document.createElement('div');
+        menu.className = 'context-menu';
+        menu.id = 'contextMenu';
+
+        items.forEach(item => {
+            if (item.divider) {
+                const div = document.createElement('div');
+                div.className = 'context-menu-divider';
+                menu.appendChild(div);
+                return;
+            }
+            const el = document.createElement('div');
+            el.className = 'context-menu-item' + (item.danger ? ' danger' : '');
+            el.textContent = item.label;
+            el.addEventListener('click', () => {
+                this.hideContextMenu();
+                item.action();
+            });
+            menu.appendChild(el);
+        });
+
+        document.body.appendChild(menu);
+
+        // Reposition if menu overflows viewport
+        const rect = menu.getBoundingClientRect();
+        if (x + rect.width > window.innerWidth) x = window.innerWidth - rect.width - 4;
+        if (y + rect.height > window.innerHeight) y = window.innerHeight - rect.height - 4;
+        menu.style.left = x + 'px';
+        menu.style.top = y + 'px';
+
+        // Close on click outside or Escape
+        const closeHandler = () => {
+            this.hideContextMenu();
+            document.removeEventListener('click', closeHandler);
+            document.removeEventListener('keydown', escHandler);
+        };
+        const escHandler = (e) => {
+            if (e.key === 'Escape') closeHandler();
+        };
+        setTimeout(() => {
+            document.addEventListener('click', closeHandler);
+            document.addEventListener('keydown', escHandler);
+        }, 0);
+    }
+
+    hideContextMenu() {
+        const existing = document.getElementById('contextMenu');
+        if (existing) existing.remove();
+    }
+
+    findRequestByName(name) {
+        if (!this.state.currentCollection) return null;
+        const fromRoot = this.state.currentCollection.requests.find(r => r.name === name);
+        if (fromRoot) return fromRoot;
+        const searchFolders = (folders) => {
+            for (const folder of folders) {
+                const found = folder.requests.find(r => r.name === name);
+                if (found) return found;
+                if (folder.folders) {
+                    const sub = searchFolders(folder.folders);
+                    if (sub) return sub;
+                }
+            }
+            return null;
+        };
+        return searchFolders(this.state.currentCollection.folders || []);
+    }
+
+    renameRequest(request) {
+        DialogSystem.showPrompt('Rename request:', request.name, (newName) => {
+            if (newName && newName !== request.name) {
+                request.name = newName;
+                this.state.markAsChanged();
+                this.updateCollectionTree();
+                if (this.state.currentRequest === request) {
+                    this.updateTabContent('request');
+                }
+            }
+        });
+    }
+
+    renameFolder(folder) {
+        DialogSystem.showPrompt('Rename folder:', folder.name, (newName) => {
+            if (newName && newName !== folder.name) {
+                folder.name = newName;
+                this.state.markAsChanged();
+                this.updateCollectionTree();
+            }
+        });
+    }
+
+    renameCollection() {
+        if (!this.state.currentCollection) return;
+        DialogSystem.showPrompt('Rename collection:', this.state.currentCollection.name, (newName) => {
+            if (newName && newName !== this.state.currentCollection.name) {
+                this.state.currentCollection.name = newName;
+                this.state.markAsChanged();
+                this.updateCollectionTree();
+                this.state.updateStatusBar();
+            }
+        });
+    }
+
+    deleteRequestDirect(request) {
+        DialogSystem.showConfirm(`Delete "${request.name}"?`, (confirmed) => {
+            if (!confirmed) return;
+            // Remove from root
+            const rootIdx = this.state.currentCollection.requests.indexOf(request);
+            if (rootIdx !== -1) {
+                this.state.currentCollection.requests.splice(rootIdx, 1);
+            } else {
+                // Remove from folders
+                const removeFromFolders = (folders) => {
+                    for (const f of folders) {
+                        const idx = f.requests.indexOf(request);
+                        if (idx !== -1) { f.requests.splice(idx, 1); return true; }
+                        if (f.folders && removeFromFolders(f.folders)) return true;
+                    }
+                    return false;
+                };
+                removeFromFolders(this.state.currentCollection.folders || []);
+            }
+            if (this.state.currentRequest === request) {
+                this.state.setCurrentRequest(null);
+                this.switchTab('request');
+            }
+            this.state.markAsChanged();
+            this.updateCollectionTree();
+        });
+    }
+
+    duplicateRequestDirect(request) {
+        DialogSystem.showPrompt('Name for duplicate:', `${request.name} Copy`, (newName) => {
+            if (newName) {
+                const dup = new Request(
+                    newName, request.method, request.url,
+                    { ...request.headers }, request.body,
+                    request.description,
+                    { prerequest: '', test: request.tests || '' }
+                );
+                // Add to same container as original
+                const loc = this.findRequestLocation(request.name);
+                if (loc) {
+                    loc.container.push(dup);
+                } else {
+                    this.state.currentCollection.addRequest(dup);
+                }
+                this.state.markAsChanged();
+                this.updateCollectionTree();
+            }
+        });
+    }
+
+    moveRequestToFolder(request) {
+        if (!this.state.currentCollection) return;
+        // Collect all folder names
+        const folderNames = ['(Root)'];
+        const collectFolders = (folders, prefix) => {
+            for (const f of folders) {
+                folderNames.push(prefix + f.name);
+                if (f.folders) collectFolders(f.folders, prefix + f.name + '/');
+            }
+        };
+        collectFolders(this.state.currentCollection.folders || [], '');
+
+        DialogSystem.showPrompt('Move to folder (type name, or "(Root)" for root):', '(Root)', (target) => {
+            if (target === null) return;
+            // Remove from current location
+            const loc = this.findRequestLocation(request.name);
+            if (!loc) return;
+            loc.container.splice(loc.index, 1);
+
+            if (target === '(Root)' || target === '') {
+                this.state.currentCollection.requests.push(request);
+            } else {
+                // Resolve nested paths like "Auth/Login"
+                const parts = target.split('/');
+                const folderName = parts[parts.length - 1];
+                const folder = this.findFolderByName(this.state.currentCollection.folders, folderName);
+                if (folder) {
+                    folder.requests.push(request);
+                } else {
+                    // Folder not found, put back at root
+                    this.state.currentCollection.requests.push(request);
+                    this.showToast('Folder not found, moved to root');
+                }
+            }
+            this.state.markAsChanged();
+            this.updateCollectionTree();
+            this.showToast(`Moved "${request.name}"`);
+        });
+    }
+
+    addRequestToFolder(folder) {
+        DialogSystem.showPrompt('Enter request name:', 'New Request', (name) => {
+            if (name) {
+                const request = new Request(name, 'GET', '/');
+                folder.requests.push(request);
+                this.state.setCurrentRequest(request);
+                this.state.markAsChanged();
+                this.updateCollectionTree();
+                this.switchTab('request');
+            }
+        });
+    }
+
+    addSubfolder(parentFolder) {
+        DialogSystem.showPrompt('Enter subfolder name:', 'New Subfolder', (name) => {
+            if (name) {
+                if (!parentFolder.folders) parentFolder.folders = [];
+                parentFolder.folders.push(new Folder(name));
+                this.state.markAsChanged();
+                this.updateCollectionTree();
+            }
+        });
+    }
+
+    deleteFolder(folder) {
+        DialogSystem.showConfirm(`Delete folder "${folder.name}" and all its contents?`, (confirmed) => {
+            if (!confirmed) return;
+            // Remove from parent
+            const removeFolderFrom = (folders) => {
+                const idx = folders.indexOf(folder);
+                if (idx !== -1) { folders.splice(idx, 1); return true; }
+                for (const f of folders) {
+                    if (f.folders && removeFolderFrom(f.folders)) return true;
+                }
+                return false;
+            };
+            removeFolderFrom(this.state.currentCollection.folders);
+            if (this.state.currentFolder === folder) {
+                this.state.setCurrentFolder(null);
+            }
+            this.state.markAsChanged();
+            this.updateCollectionTree();
+        });
+    }
+
+    // ===== Feature 2: Environment Variables =====
+
+    substituteVariables(text) {
+        if (!text || !this.state.activeEnvironment) return text;
+        const env = this.state.environments.find(e => e.name === this.state.activeEnvironment);
+        if (!env) return text;
+        return text.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+            return env.variables[varName] !== undefined ? env.variables[varName] : match;
+        });
+    }
+
+    getActiveEnvironmentVariables() {
+        if (!this.state.activeEnvironment) return {};
+        const env = this.state.environments.find(e => e.name === this.state.activeEnvironment);
+        return env ? env.variables : {};
+    }
+
+    updateEnvironmentSelector() {
+        const selector = document.getElementById('envSelector');
+        if (!selector) return;
+        const current = this.state.activeEnvironment;
+        selector.innerHTML = '<option value="">No Environment</option>';
+        this.state.environments.forEach(env => {
+            const opt = document.createElement('option');
+            opt.value = env.name;
+            opt.textContent = env.name;
+            if (env.name === current) opt.selected = true;
+            selector.appendChild(opt);
+        });
+    }
+
+    updateUrlPreview() {
+        const previewEl = document.getElementById('urlPreview');
+        const urlInput = document.getElementById('requestUrl');
+        if (!previewEl || !urlInput) return;
+        const raw = urlInput.value;
+        if (!raw || !this.state.activeEnvironment || !raw.includes('{{')) {
+            previewEl.textContent = '';
+            previewEl.style.display = 'none';
+            return;
+        }
+        const resolved = this.substituteVariables(raw);
+        if (resolved !== raw) {
+            previewEl.textContent = resolved;
+            previewEl.style.display = 'block';
+        } else {
+            previewEl.textContent = '';
+            previewEl.style.display = 'none';
+        }
+    }
+
+    showEnvironmentManager() {
+        // Remove existing
+        const existingOverlay = document.getElementById('envManagerOverlay');
+        if (existingOverlay) existingOverlay.remove();
+        const existingPanel = document.getElementById('envManagerPanel');
+        if (existingPanel) existingPanel.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'envManagerOverlay';
+        overlay.className = 'settings-overlay';
+
+        const panel = document.createElement('div');
+        panel.id = 'envManagerPanel';
+        panel.className = 'env-manager-panel';
+
+        let editingEnvName = this.state.environments.length > 0 ? this.state.environments[0].name : null;
+
+        const render = () => {
+            panel.innerHTML = `
+                <div class="settings-header">
+                    <h3>Environments</h3>
+                    <button class="settings-close-btn" id="closeEnvMgrBtn">&times;</button>
+                </div>
+                <div class="env-list">
+                    ${this.state.environments.map(env => `
+                        <div class="env-list-item ${env.name === editingEnvName ? 'active' : ''}" data-env="${env.name}">
+                            <span>${env.name}</span>
+                            <button class="env-var-remove" data-delete-env="${env.name}">&times;</button>
+                        </div>
+                    `).join('')}
+                    <button id="addEnvBtn" style="margin-top:8px; font-size:12px; padding:6px 12px;">+ Add Environment</button>
+                </div>
+                <div style="padding:16px; flex:1; overflow-y:auto;">
+                    ${editingEnvName ? this.renderEnvEditor(editingEnvName) : '<div class="empty-state" style="padding:20px;">Select or create an environment</div>'}
+                </div>
+                <div class="settings-footer">
+                    <button id="saveEnvBtn">Save</button>
+                    <button id="cancelEnvBtn" class="secondary">Close</button>
+                </div>
+            `;
+
+            // Event listeners
+            panel.querySelector('#closeEnvMgrBtn').addEventListener('click', close);
+            panel.querySelector('#cancelEnvBtn').addEventListener('click', close);
+
+            panel.querySelectorAll('.env-list-item').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    if (e.target.dataset.deleteEnv) return;
+                    editingEnvName = el.dataset.env;
+                    render();
+                });
+            });
+
+            panel.querySelectorAll('[data-delete-env]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const name = btn.dataset.deleteEnv;
+                    this.state.environments = this.state.environments.filter(env => env.name !== name);
+                    if (this.state.activeEnvironment === name) this.state.activeEnvironment = null;
+                    if (editingEnvName === name) editingEnvName = this.state.environments.length > 0 ? this.state.environments[0].name : null;
+                    this.updateEnvironmentSelector();
+                    render();
+                });
+            });
+
+            const addBtn = panel.querySelector('#addEnvBtn');
+            if (addBtn) {
+                addBtn.addEventListener('click', () => {
+                    DialogSystem.showPrompt('Environment name:', 'New Environment', (name) => {
+                        if (name && !this.state.environments.find(e => e.name === name)) {
+                            this.state.environments.push({ name, variables: {} });
+                            editingEnvName = name;
+                            this.updateEnvironmentSelector();
+                            render();
+                        }
+                    });
+                });
+            }
+
+            const saveBtn = panel.querySelector('#saveEnvBtn');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', () => {
+                    if (editingEnvName) {
+                        const env = this.state.environments.find(e => e.name === editingEnvName);
+                        if (env) {
+                            const newVars = {};
+                            panel.querySelectorAll('.env-var-row').forEach(row => {
+                                const key = row.querySelector('.env-key')?.value?.trim();
+                                const val = row.querySelector('.env-val')?.value || '';
+                                if (key) newVars[key] = val;
+                            });
+                            env.variables = newVars;
+                        }
+                    }
+                    this.updateEnvironmentSelector();
+                    this.updateUrlPreview();
+                    this.triggerAutoSave();
+                    this.showToast('Environments saved');
+                });
+            }
+
+            // Add variable button
+            const addVarBtn = panel.querySelector('#addEnvVarBtn');
+            if (addVarBtn) {
+                addVarBtn.addEventListener('click', () => {
+                    const container = panel.querySelector('#envVarsContainer');
+                    if (!container) return;
+                    const row = document.createElement('div');
+                    row.className = 'env-var-row';
+                    row.innerHTML = `
+                        <input type="text" class="env-key" placeholder="Variable name">
+                        <input type="text" class="env-val" placeholder="Value">
+                        <button class="env-var-remove">&times;</button>
+                    `;
+                    row.querySelector('.env-var-remove').addEventListener('click', () => row.remove());
+                    container.appendChild(row);
+                });
+            }
+
+            // Remove var buttons
+            panel.querySelectorAll('.env-var-row .env-var-remove').forEach(btn => {
+                btn.addEventListener('click', () => btn.closest('.env-var-row').remove());
+            });
+        };
+
+        const close = () => {
+            overlay.classList.remove('open');
+            panel.classList.remove('open');
+            setTimeout(() => { overlay.remove(); panel.remove(); }, 300);
+        };
+
+        document.body.appendChild(overlay);
+        document.body.appendChild(panel);
+
+        requestAnimationFrame(() => {
+            overlay.classList.add('open');
+            panel.classList.add('open');
+        });
+
+        overlay.addEventListener('click', close);
+        render();
+    }
+
+    renderEnvEditor(envName) {
+        const env = this.state.environments.find(e => e.name === envName);
+        if (!env) return '';
+        const vars = Object.entries(env.variables);
+        return `
+            <h4 style="margin-bottom:12px; color:var(--text-primary);">${envName} Variables</h4>
+            <div id="envVarsContainer">
+                ${vars.map(([key, val]) => `
+                    <div class="env-var-row">
+                        <input type="text" class="env-key" value="${key}" placeholder="Variable name">
+                        <input type="text" class="env-val" value="${val}" placeholder="Value">
+                        <button class="env-var-remove">&times;</button>
+                    </div>
+                `).join('')}
+            </div>
+            <button id="addEnvVarBtn" class="add-header-btn" style="margin-top:8px;">+ Add Variable</button>
+        `;
+    }
+
+    // ===== Feature 3: Request Execution =====
+
+    async sendRequest() {
+        if (!this.state.currentRequest && !this.state.currentCollection) {
+            this.showToast('No request selected');
+            return;
+        }
+
+        const form = this.getRequestFromForm();
+        if (!form.url || form.url.trim() === '' || form.url.trim() === '/') {
+            this.showToast('Please enter a valid URL');
+            return;
+        }
+
+        // Substitute environment variables
+        let url = this.substituteVariables(form.url);
+        const body = this.substituteVariables(form.body);
+        const headers = {};
+        for (const [k, v] of Object.entries(form.headers)) {
+            headers[this.substituteVariables(k)] = this.substituteVariables(v);
+        }
+
+        // Apply inheritance: add global headers
+        if (this.state.inheritGlobally) {
+            const globalHeaders = this.state.inheritanceManager.getGlobalHeaders();
+            if (Array.isArray(globalHeaders)) {
+                globalHeaders.forEach(h => {
+                    if (h.key && !headers[h.key]) headers[h.key] = h.value;
+                });
+            }
+            // Prepend base endpoint if url is relative
+            if (url.startsWith('/')) {
+                const endpoints = this.state.inheritanceManager.getBaseEndpoints();
+                if (endpoints.length > 0) {
+                    url = endpoints[0].replace(/\/+$/, '') + url;
+                }
+            }
+        }
+
+        // Ensure URL has protocol
+        if (url && !url.match(/^https?:\/\//i)) {
+            url = 'https://' + url;
+        }
+
+        const sendBtn = document.getElementById('sendRequestBtn');
+        if (sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<span class="spinner"></span>Sending...';
+        }
+
+        try {
+            const result = await window.electronAPI.sendRequest({
+                method: form.method,
+                url: url,
+                headers: headers,
+                body: body
+            });
+            this.displayResponse(result);
+        } catch (error) {
+            this.displayResponse({ success: false, error: error.message || 'Request failed' });
+        } finally {
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send';
+            }
+        }
+    }
+
+    getRequestFromForm() {
+        return {
+            method: document.getElementById('requestMethod')?.value || 'GET',
+            url: document.getElementById('requestUrl')?.value || '',
+            headers: this.getHeadersFromForm(),
+            body: document.getElementById('requestBody')?.value || ''
+        };
+    }
+
+    getHeadersFromForm() {
+        const headers = {};
+        document.querySelectorAll('#requestHeadersContainer .header-row').forEach(row => {
+            const key = row.querySelector('.header-key')?.value?.trim();
+            const val = row.querySelector('.header-value')?.value || '';
+            if (key) headers[key] = val;
+        });
+        return headers;
+    }
+
+    displayResponse(response) {
+        let existingPanel = document.getElementById('responsePanel');
+        if (existingPanel) existingPanel.remove();
+
+        const requestTab = document.getElementById('requestTab');
+        if (!requestTab) return;
+
+        const panel = document.createElement('div');
+        panel.id = 'responsePanel';
+        panel.className = 'response-panel';
+
+        if (!response.success) {
+            panel.innerHTML = `
+                <div class="response-header">
+                    <span class="response-status status-err">Error</span>
+                    <span class="response-time">${response.error || 'Unknown error'}</span>
+                </div>
+            `;
+            requestTab.appendChild(panel);
+            return;
+        }
+
+        const statusClass = response.status < 300 ? 'status-2xx' :
+                            response.status < 400 ? 'status-3xx' :
+                            response.status < 500 ? 'status-4xx' : 'status-5xx';
+
+        // Try to pretty-print JSON
+        let bodyDisplay = response.body || '';
+        let isJson = false;
+        try {
+            const parsed = JSON.parse(bodyDisplay);
+            bodyDisplay = JSON.stringify(parsed, null, 2);
+            isJson = true;
+        } catch (_) {}
+
+        const sizeStr = response.body ? this.formatBytes(new Blob([response.body]).size) : '0 B';
+
+        // Build response headers HTML
+        let headersHtml = '';
+        if (response.headers && typeof response.headers === 'object') {
+            for (const [k, v] of Object.entries(response.headers)) {
+                headersHtml += `<div class="header-entry"><span class="header-key">${this.escapeHtml(k)}</span><span class="header-val">${this.escapeHtml(String(v))}</span></div>`;
+            }
+        }
+
+        panel.innerHTML = `
+            <div class="response-header">
+                <span class="response-status ${statusClass}">${response.status} ${response.statusText || ''}</span>
+                <span class="response-time">${response.time}ms</span>
+                <span class="response-size">${sizeStr}</span>
+            </div>
+            <div class="response-tabs">
+                <div class="response-tab active" data-rtab="body">Body</div>
+                <div class="response-tab" data-rtab="headers">Headers</div>
+            </div>
+            <div id="responseBodyPane" class="response-body"><pre>${this.escapeHtml(bodyDisplay)}</pre></div>
+            <div id="responseHeadersPane" class="response-headers-list" style="display:none;">${headersHtml}</div>
+        `;
+
+        requestTab.appendChild(panel);
+
+        // Tab switching
+        panel.querySelectorAll('.response-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                panel.querySelectorAll('.response-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                const target = tab.dataset.rtab;
+                document.getElementById('responseBodyPane').style.display = target === 'body' ? 'block' : 'none';
+                document.getElementById('responseHeadersPane').style.display = target === 'headers' ? 'block' : 'none';
+            });
+        });
+    }
+
+    escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    // ===== Feature 4: Auto-save & Persistence =====
+
+    triggerAutoSave() {
+        if (!this.state.autoSave) return;
+        if (this._autoSaveTimer) clearTimeout(this._autoSaveTimer);
+        this._autoSaveTimer = setTimeout(() => this.performAutoSave(), 2000);
+    }
+
+    async performAutoSave() {
+        if (!window.electronAPI || !window.electronAPI.autoSave) return;
+        try {
+            const data = {
+                version: 1,
+                timestamp: new Date().toISOString(),
+                collection: this.state.currentCollection ? this.state.currentCollection.toPostmanJSON() : null,
+                currentRequestName: this.state.currentRequest ? this.state.currentRequest.name : null,
+                currentFolderName: this.state.currentFolder ? this.state.currentFolder.name : null,
+                environments: this.state.environments,
+                activeEnvironment: this.state.activeEnvironment,
+                inheritance: this.state.inheritanceManager.toJSON ? this.state.inheritanceManager.toJSON() : null,
+                settings: {
+                    darkMode: this.state.darkMode,
+                    autoSave: this.state.autoSave,
+                    autoFormat: this.state.autoFormat,
+                    showLineNumbers: this.state.showLineNumbers,
+                    inheritGlobally: this.state.inheritGlobally,
+                    sidebarWidth: parseInt(getComputedStyle(document.querySelector('.sidebar')).width, 10) || 280
+                }
+            };
+            await window.electronAPI.autoSave(data);
+        } catch (error) {
+            console.error('Auto-save failed:', error);
+        }
+    }
+
+    async loadAutoSave() {
+        if (!window.electronAPI || !window.electronAPI.autoLoad) return;
+        try {
+            const result = await window.electronAPI.autoLoad();
+            if (!result || !result.success || !result.data) return;
+
+            DialogSystem.showConfirm('Restore previous session?', (restore) => {
+                if (restore) {
+                    this.restoreFromAutoSave(result.data);
+                } else {
+                    window.electronAPI.clearAutosave().catch(() => {});
+                }
+            });
+        } catch (error) {
+            console.error('Auto-load failed:', error);
+        }
+    }
+
+    restoreFromAutoSave(data) {
+        try {
+            // Restore settings first
+            if (data.settings) {
+                this.state.autoSave = data.settings.autoSave !== undefined ? data.settings.autoSave : false;
+                this.state.darkMode = data.settings.darkMode !== undefined ? data.settings.darkMode : false;
+                this.state.autoFormat = data.settings.autoFormat !== undefined ? data.settings.autoFormat : true;
+                this.state.showLineNumbers = data.settings.showLineNumbers !== undefined ? data.settings.showLineNumbers : true;
+                this.state.inheritGlobally = data.settings.inheritGlobally !== undefined ? data.settings.inheritGlobally : true;
+                this.applyTheme(this.state.darkMode ? 'dark' : 'light');
+                if (data.settings.sidebarWidth) {
+                    document.documentElement.style.setProperty('--sidebar-width', data.settings.sidebarWidth + 'px');
+                }
+            }
+
+            // Restore environments
+            if (data.environments && Array.isArray(data.environments)) {
+                this.state.environments = data.environments;
+                this.state.activeEnvironment = data.activeEnvironment || null;
+                this.updateEnvironmentSelector();
+            }
+
+            // Restore inheritance
+            if (data.inheritance && InheritanceManager.fromJSON) {
+                this.state.inheritanceManager = InheritanceManager.fromJSON(data.inheritance);
+            }
+
+            // Restore collection
+            if (data.collection) {
+                const collection = new Collection('Restored');
+                collection.importFromJSON(data.collection);
+                this.state.setCurrentCollection(collection);
+                this.updateCollectionTree();
+
+                // Restore current request selection
+                if (data.currentRequestName) {
+                    const req = this.findRequestByName(data.currentRequestName);
+                    if (req) {
+                        this.state.setCurrentRequest(req);
+                        this.switchTab('request');
+                    }
+                }
+                if (data.currentFolderName) {
+                    const folder = this.findFolderByName(this.state.currentCollection.folders, data.currentFolderName);
+                    if (folder) this.state.setCurrentFolder(folder);
+                }
+            }
+
+            this.state.unsavedChanges = false;
+            this.state.updateStatusBar();
+            this.showToast('Session restored');
+        } catch (error) {
+            console.error('Restore failed:', error);
+            this.showToast('Failed to restore session');
+        }
     }
 
     // Sample Data

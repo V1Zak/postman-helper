@@ -21,7 +21,15 @@ try {
 contextBridge.exposeInMainWorld('electronAPI', {
   saveFile: (data) => ipcRenderer.invoke('save-file', data),
   openFile: (options) => ipcRenderer.invoke('open-file', options),
-  
+
+  // Request execution
+  sendRequest: (options) => ipcRenderer.invoke('send-request', options),
+
+  // Auto-save & persistence
+  autoSave: (data) => ipcRenderer.invoke('auto-save', data),
+  autoLoad: () => ipcRenderer.invoke('auto-load'),
+  clearAutosave: () => ipcRenderer.invoke('clear-autosave'),
+
   // Add more API methods as needed
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
   onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', callback)

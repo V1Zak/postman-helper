@@ -90,8 +90,101 @@ ipcMain.handle('open-file', async (event, options) => {
       const content = fs.readFileSync(result.filePaths[0], 'utf-8')
       return { success: true, path: result.filePaths[0], content: content }
     }
-    
+
     return { success: false }
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
+})
+
+// ===== Feature 3: HTTP Request Execution =====
+ipcMain.handle('send-request', async (event, options) => {
+  const { method, url, headers, body } = options
+  const startTime = Date.now()
+
+  try {
+    const parsedUrl = new URL(url)
+    const httpModule = parsedUrl.protocol === 'https:' ? require('https') : require('http')
+
+    return new Promise((resolve) => {
+      const reqOptions = {
+        method: method || 'GET',
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+        path: parsedUrl.pathname + parsedUrl.search,
+        headers: headers || {},
+        timeout: 30000
+      }
+
+      const req = httpModule.request(reqOptions, (res) => {
+        const chunks = []
+        res.on('data', (chunk) => chunks.push(chunk))
+        res.on('end', () => {
+          const elapsed = Date.now() - startTime
+          const bodyStr = Buffer.concat(chunks).toString('utf-8')
+          const responseHeaders = {}
+          for (const [key, value] of Object.entries(res.headers)) {
+            responseHeaders[key] = Array.isArray(value) ? value.join(', ') : value
+          }
+          resolve({
+            success: true,
+            status: res.statusCode,
+            statusText: res.statusMessage,
+            headers: responseHeaders,
+            body: bodyStr,
+            time: elapsed
+          })
+        })
+      })
+
+      req.on('timeout', () => {
+        req.destroy()
+        resolve({ success: false, error: 'Request timed out after 30 seconds', time: Date.now() - startTime })
+      })
+
+      req.on('error', (error) => {
+        resolve({ success: false, error: error.message, time: Date.now() - startTime })
+      })
+
+      if (body && method !== 'GET' && method !== 'HEAD') {
+        req.write(body)
+      }
+      req.end()
+    })
+  } catch (error) {
+    return { success: false, error: error.message, time: Date.now() - startTime }
+  }
+})
+
+// ===== Feature 4: Auto-save & Persistence =====
+const AUTOSAVE_DIR = path.join(require('os').homedir(), '.postman-helper')
+const AUTOSAVE_FILE = path.join(AUTOSAVE_DIR, 'autosave.json')
+
+ipcMain.handle('auto-save', async (event, data) => {
+  try {
+    fs.mkdirSync(AUTOSAVE_DIR, { recursive: true })
+    fs.writeFileSync(AUTOSAVE_FILE, JSON.stringify(data, null, 2), 'utf-8')
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('auto-load', async () => {
+  try {
+    if (!fs.existsSync(AUTOSAVE_FILE)) return { success: false }
+    const content = fs.readFileSync(AUTOSAVE_FILE, 'utf-8')
+    const data = JSON.parse(content)
+    return { success: true, data }
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('clear-autosave', async () => {
+  try {
+    if (fs.existsSync(AUTOSAVE_FILE)) fs.unlinkSync(AUTOSAVE_FILE)
+    return { success: true }
   } catch (error) {
     return { success: false, error: error.message }
   }
