@@ -30,6 +30,7 @@ before(() => {
     // Re-create AppState manually (it's defined inside app.js but not exported)
     AppState = class {
         constructor() {
+            this.collections = [];
             this.currentCollection = null;
             this.currentRequest = null;
             this.currentFolder = null;
@@ -43,7 +44,25 @@ before(() => {
         }
         setCurrentCollection(collection) {
             this.currentCollection = collection;
+            if (collection && !this.collections.includes(collection)) {
+                this.collections.push(collection);
+            }
             this.unsavedChanges = false;
+        }
+        addCollection(collection) {
+            this.collections.push(collection);
+            if (!this.currentCollection) {
+                this.currentCollection = collection;
+            }
+        }
+        removeCollection(collection) {
+            const idx = this.collections.indexOf(collection);
+            if (idx !== -1) this.collections.splice(idx, 1);
+            if (this.currentCollection === collection) {
+                this.currentCollection = this.collections[0] || null;
+                this.currentRequest = null;
+                this.currentFolder = null;
+            }
         }
         setCurrentRequest(request) {
             this.currentRequest = request;
@@ -59,7 +78,8 @@ before(() => {
             const statusInfo = document.getElementById('statusInfo');
             if (this.currentCollection) {
                 const changeIndicator = this.unsavedChanges ? '• ' : '';
-                statusInfo.textContent = `${changeIndicator}${this.currentCollection.name} | ${this.currentCollection.requests.length} requests, ${this.currentCollection.folders.length} folders`;
+                const colCount = this.collections.length > 1 ? ` (${this.collections.length} collections)` : '';
+                statusInfo.textContent = `${changeIndicator}${this.currentCollection.name} | ${this.currentCollection.requests.length} requests, ${this.currentCollection.folders.length} folders${colCount}`;
             } else {
                 statusInfo.textContent = 'No collection loaded';
             }
@@ -129,6 +149,54 @@ describe('AppState', () => {
         assert.ok(statusInfo.textContent.includes('API'));
         assert.ok(statusInfo.textContent.includes('2 requests'));
         assert.ok(statusInfo.textContent.includes('0 folders'));
+    });
+
+    it('addCollection adds to collections array', () => {
+        const state = new AppState();
+        const col1 = new Collection('Col1');
+        const col2 = new Collection('Col2');
+        state.addCollection(col1);
+        state.addCollection(col2);
+        assert.equal(state.collections.length, 2);
+        assert.equal(state.currentCollection, col1); // first added becomes current
+    });
+
+    it('removeCollection removes and switches current', () => {
+        const state = new AppState();
+        const col1 = new Collection('Col1');
+        const col2 = new Collection('Col2');
+        state.addCollection(col1);
+        state.addCollection(col2);
+        state.currentCollection = col1;
+        state.removeCollection(col1);
+        assert.equal(state.collections.length, 1);
+        assert.equal(state.currentCollection, col2);
+    });
+
+    it('removeCollection sets null when last removed', () => {
+        const state = new AppState();
+        const col = new Collection('Only');
+        state.addCollection(col);
+        state.currentCollection = col;
+        state.removeCollection(col);
+        assert.equal(state.collections.length, 0);
+        assert.equal(state.currentCollection, null);
+    });
+
+    it('setCurrentCollection auto-adds to collections', () => {
+        const state = new AppState();
+        const col = new Collection('Auto');
+        state.setCurrentCollection(col);
+        assert.equal(state.collections.length, 1);
+        assert.ok(state.collections.includes(col));
+    });
+
+    it('setCurrentCollection does not duplicate', () => {
+        const state = new AppState();
+        const col = new Collection('NoDup');
+        state.addCollection(col);
+        state.setCurrentCollection(col);
+        assert.equal(state.collections.length, 1);
     });
 
     it('inheritanceManager has all expected methods', () => {
