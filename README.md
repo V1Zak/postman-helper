@@ -24,10 +24,14 @@ A desktop app for creating, managing, and exporting Postman API requests and col
 
 ## Features
 
+- **Request Execution** — Send HTTP requests directly from the app with a one-click Send button. Response panel shows status code (color-coded), response time, body (auto-formatted JSON), and headers
+- **Environment Variables** — Create and manage multiple environments (dev, staging, prod) with key-value variables. Use `{{variable}}` syntax in URLs, headers, and body with live URL preview showing resolved values
+- **Context Menus** — Right-click any tree item for quick actions: Rename, Duplicate, Move to Folder, Delete for requests; Rename, Add Request, Add Subfolder, Delete for folders
+- **Auto-save & Persistence** — Work is automatically saved to `~/.postman-helper/autosave.json` with 2-second debounce. On startup, offers to restore your previous session including collection, environments, inheritance rules, and settings
 - **Request Management** — Create, edit, duplicate, and delete API requests with full HTTP method support (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)
 - **Collection & Folder Organization** — Group requests into collections and nested folders with a collapsible sidebar tree
 - **Postman v2.1 Import/Export** — Full compatibility with Postman Collection format, including headers, body, and test scripts
-- **Request Inheritance** — Global headers, base endpoints, body templates, and test templates that apply across requests
+- **Request Inheritance** — Global headers, base endpoints, body templates, and test templates that apply across requests. Inheritance is applied at send-time, not save-time
 - **Body Editor with JSON Toggle** — Raw, Formatted, and Beautify modes for request body editing with inline validation
 - **Request Filtering** — Search by name/URL, filter by HTTP method, and toggle "Has Tests" / "Has Body" filters
 - **Resizable Sidebar** — Drag to resize between 200-500px, width persists across sessions
@@ -70,7 +74,7 @@ Outputs to `dist/`.
 ## Project Structure
 
 ```
-main.js          — Electron main process, IPC handlers, window creation
+main.js          — Electron main process, IPC handlers (file I/O, HTTP requests, auto-save)
 preload.js       — Context bridge, exposes models + electronAPI to renderer
 app.js           — Core renderer logic, fallback model classes, all app logic
 models.js        — Data models: PostmanRequest, Collection, Folder, InheritanceManager
