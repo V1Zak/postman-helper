@@ -335,6 +335,7 @@ class InheritanceManager {
     getTestTemplates() { return this.testTemplates; }
 
     addGlobalHeader(header) {
+        this.globalHeaders = this.globalHeaders.filter(h => h.key !== header.key);
         this.globalHeaders.push(header);
     }
 
