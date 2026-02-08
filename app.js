@@ -2883,6 +2883,7 @@ class PostmanHelperApp {
                         </div>
                     `).join('')}
                     <button id="addEnvBtn" style="margin-top:8px; font-size:12px; padding:6px 12px;">+ Add Environment</button>
+                    <button id="importEnvBtn" style="margin-top:4px; font-size:12px; padding:6px 12px;">Import from Postman</button>
                 </div>
                 <div style="padding:16px; flex:1; overflow-y:auto;">
                     ${editingEnvName ? this.renderEnvEditor(editingEnvName) : '<div class="empty-state" style="padding:20px;">Select or create an environment</div>'}
@@ -2928,6 +2929,17 @@ class PostmanHelperApp {
                             render();
                         }
                     });
+                });
+            }
+
+            const importEnvBtn = panel.querySelector('#importEnvBtn');
+            if (importEnvBtn) {
+                importEnvBtn.addEventListener('click', async () => {
+                    const importedName = await this.importEnvironment();
+                    if (importedName) {
+                        editingEnvName = importedName;
+                        render();
+                    }
                 });
             }
 
@@ -3012,6 +3024,50 @@ class PostmanHelperApp {
             </div>
             <button id="addEnvVarBtn" class="add-header-btn" style="margin-top:8px;">+ Add Variable</button>
         `;
+    }
+
+    async importEnvironment() {
+        try {
+            const result = await window.electronAPI.openFile({
+                filters: [{ name: 'JSON Files', extensions: ['json'] }]
+            });
+            if (!result || !result.success) return null;
+
+            const data = JSON.parse(result.content);
+
+            // Validate: must have values array
+            if (!data.values || !Array.isArray(data.values)) {
+                this.showToast('Invalid environment file: missing values array');
+                return null;
+            }
+
+            const name = data.name || 'Imported Environment';
+
+            // Check for duplicate name, append suffix if needed
+            let finalName = name;
+            let counter = 1;
+            while (this.state.environments.find(e => e.name === finalName)) {
+                finalName = `${name} (${counter++})`;
+            }
+
+            // Convert Postman format: [{key, value, enabled}] → {key: value}
+            const variables = {};
+            for (const v of data.values) {
+                if (v.key && v.enabled !== false) {
+                    variables[v.key] = v.value || '';
+                }
+            }
+
+            this.state.environments.push({ name: finalName, variables });
+            this.updateEnvironmentSelector();
+            this.triggerAutoSave();
+            this.showToast(`Environment "${finalName}" imported (${Object.keys(variables).length} variables)`);
+            return finalName;
+        } catch (err) {
+            console.error('Environment import error:', err);
+            this.showToast('Failed to import environment file');
+            return null;
+        }
     }
 
     // ===== Feature 3: Request Execution =====
