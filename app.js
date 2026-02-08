@@ -649,6 +649,18 @@ class PostmanHelperApp {
         document.getElementById('addBodyTemplateBtn').addEventListener('click', () => this.addBodyTemplate());
         document.getElementById('addTestTemplateBtn').addEventListener('click', () => this.addTestTemplate());
 
+        // Copy from Request buttons
+        const copyHeadersBtn = document.getElementById('copyHeadersFromRequestBtn');
+        if (copyHeadersBtn) copyHeadersBtn.addEventListener('click', () => this.copyHeadersFromRequest());
+        const copyBodyBtn = document.getElementById('copyBodyFromRequestBtn');
+        if (copyBodyBtn) copyBodyBtn.addEventListener('click', () => this.copyBodyFromRequest());
+        const copyTestsBtn = document.getElementById('copyTestsFromRequestBtn');
+        if (copyTestsBtn) copyTestsBtn.addEventListener('click', () => this.copyTestsFromRequest());
+
+        // Reset All Inheritance button
+        const resetAllBtn = document.getElementById('resetAllInheritanceBtn');
+        if (resetAllBtn) resetAllBtn.addEventListener('click', () => this.resetAllInheritance());
+
         // Auth preset buttons
         const bearerBtn = document.getElementById('addBearerTokenBtn');
         if (bearerBtn) bearerBtn.addEventListener('click', () => this.addBearerTokenPreset());
@@ -900,13 +912,42 @@ class PostmanHelperApp {
         const body = this.state.currentRequest ? (this.state.currentRequest.body || '') : '';
         if (this.state.bodyViewMode === 'formatted' && body.trim()) {
             try {
-                return JSON.stringify(JSON.parse(body), null, 2);
+                return JSON.stringify(this.tryParseJSON(body), null, 2);
             } catch (e) {
                 // Invalid JSON — fall back to raw
                 return body;
             }
         }
         return body;
+    }
+
+    tryParseJSON(raw) {
+        // Try strict JSON first
+        try {
+            return JSON.parse(raw);
+        } catch (strictError) {
+            // Lenient cleanup: strip comments, trailing commas, single quotes
+            try {
+                let cleaned = raw;
+                // Remove single-line comments
+                cleaned = cleaned.replace(/\/\/.*$/gm, '');
+                // Remove multi-line comments
+                cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, '');
+                // Remove trailing commas before } or ]
+                cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
+                // Replace single-quoted strings with double-quoted
+                // Match single-quoted strings (handling escaped single quotes inside)
+                cleaned = cleaned.replace(/'((?:[^'\\]|\\.)*)'/g, (match, content) => {
+                    // Escape any unescaped double quotes inside, unescape single quotes
+                    const fixed = content.replace(/\\'/g, "'").replace(/"/g, '\\"');
+                    return `"${fixed}"`;
+                });
+                return JSON.parse(cleaned);
+            } catch (lenientError) {
+                // Throw error with position info from the original strict error
+                throw strictError;
+            }
+        }
     }
 
     setupBodyToggle() {
@@ -935,13 +976,13 @@ class PostmanHelperApp {
                 return;
             }
             try {
-                const formatted = JSON.stringify(JSON.parse(raw), null, 2);
+                const formatted = JSON.stringify(this.tryParseJSON(raw), null, 2);
                 textarea.value = formatted;
                 errorDiv.style.display = 'none';
                 this.state.bodyViewMode = 'formatted';
                 updateActiveState();
             } catch (e) {
-                errorDiv.textContent = 'Invalid JSON — cannot format';
+                errorDiv.textContent = 'Invalid JSON — cannot format: ' + e.message;
                 errorDiv.style.display = 'block';
             }
         });
@@ -966,14 +1007,14 @@ class PostmanHelperApp {
                 return;
             }
             try {
-                const formatted = JSON.stringify(JSON.parse(raw), null, 2);
+                const formatted = JSON.stringify(this.tryParseJSON(raw), null, 2);
                 textarea.value = formatted;
                 errorDiv.style.display = 'none';
                 this.state.bodyViewMode = 'formatted';
                 updateActiveState();
                 this.state.markAsChanged();
             } catch (e) {
-                errorDiv.textContent = 'Invalid JSON — cannot beautify';
+                errorDiv.textContent = 'Invalid JSON — cannot beautify: ' + e.message;
                 errorDiv.style.display = 'block';
             }
         });
@@ -1096,6 +1137,25 @@ class PostmanHelperApp {
                 this.state.markAsChanged();
                 this.updateInheritanceTab();
             });
+        });
+
+        // Listen for inline edits on global header key/value inputs
+        const headerRows = globalHeadersContainer.querySelectorAll('.header-row');
+        headerRows.forEach((row, index) => {
+            const keyInput = row.querySelector('.global-header-key');
+            const valueInput = row.querySelector('.global-header-value');
+            if (keyInput) {
+                keyInput.addEventListener('change', () => {
+                    this.state.inheritanceManager.globalHeaders[index].key = keyInput.value;
+                    this.state.markAsChanged();
+                });
+            }
+            if (valueInput) {
+                valueInput.addEventListener('change', () => {
+                    this.state.inheritanceManager.globalHeaders[index].value = valueInput.value;
+                    this.state.markAsChanged();
+                });
+            }
         });
 
         document.querySelectorAll('.remove-base-endpoint-btn').forEach(btn => {
@@ -2057,6 +2117,89 @@ class PostmanHelperApp {
                     this.showToast('Basic auth added as global header');
                 }
             });
+        });
+    }
+
+    copyHeadersFromRequest() {
+        if (!this.state.currentRequest) {
+            this.showToast('No request selected');
+            return;
+        }
+        const headers = this.state.currentRequest.headers;
+        if (!headers || (Array.isArray(headers) && headers.length === 0) || (typeof headers === 'object' && !Array.isArray(headers) && Object.keys(headers).length === 0)) {
+            this.showToast('Current request has no headers');
+            return;
+        }
+        let count = 0;
+        if (Array.isArray(headers)) {
+            for (const h of headers) {
+                if (h.key && h.value !== undefined) {
+                    this.state.inheritanceManager.addGlobalHeader(h.key, h.value);
+                    count++;
+                }
+            }
+        } else {
+            for (const [key, value] of Object.entries(headers)) {
+                this.state.inheritanceManager.addGlobalHeader(key, value);
+                count++;
+            }
+        }
+        this.state.markAsChanged();
+        this.updateInheritanceTab();
+        this.showToast(`Copied ${count} header(s) from current request`);
+    }
+
+    copyBodyFromRequest() {
+        if (!this.state.currentRequest) {
+            this.showToast('No request selected');
+            return;
+        }
+        const body = this.state.currentRequest.body;
+        if (!body || !body.trim()) {
+            this.showToast('Current request has no body');
+            return;
+        }
+        DialogSystem.showPrompt('Template name:', '', (name) => {
+            if (name !== null && name.trim()) {
+                this.state.inheritanceManager.addBodyTemplate(name.trim(), body);
+                this.state.markAsChanged();
+                this.updateInheritanceTab();
+                this.showToast(`Body template "${name.trim()}" created from current request`);
+            }
+        });
+    }
+
+    copyTestsFromRequest() {
+        if (!this.state.currentRequest) {
+            this.showToast('No request selected');
+            return;
+        }
+        const tests = this.state.currentRequest.tests;
+        if (!tests || !tests.trim()) {
+            this.showToast('Current request has no tests');
+            return;
+        }
+        DialogSystem.showPrompt('Template name:', '', (name) => {
+            if (name !== null && name.trim()) {
+                this.state.inheritanceManager.addTestTemplate(name.trim(), tests);
+                this.state.markAsChanged();
+                this.updateInheritanceTab();
+                this.showToast(`Test template "${name.trim()}" created from current request`);
+            }
+        });
+    }
+
+    resetAllInheritance() {
+        DialogSystem.showConfirm('Reset all inheritance settings? This will clear all global headers, base endpoints, body templates, and test templates.', (confirmed) => {
+            if (confirmed) {
+                this.state.inheritanceManager.globalHeaders = [];
+                this.state.inheritanceManager.baseEndpoints = [];
+                this.state.inheritanceManager.bodyTemplates = [];
+                this.state.inheritanceManager.testTemplates = [];
+                this.state.markAsChanged();
+                this.updateInheritanceTab();
+                this.showToast('All inheritance settings have been reset');
+            }
         });
     }
 
