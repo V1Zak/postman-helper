@@ -306,6 +306,7 @@ InheritanceManager = class {
         setGlobalHeaders(h) { this.globalHeaders = h; }
         addBaseEndpoint(e) { this.baseEndpoints.push(e); }
         addGlobalHeader(key, value) {
+            this.globalHeaders = this.globalHeaders.filter(h => h.key !== key);
             this.globalHeaders.push({ key, value });
         }
         addBodyTemplate(name, content) {
@@ -642,6 +643,7 @@ class PostmanHelperApp {
         document.getElementById('importBtn').addEventListener('click', () => this.importCollection());
         document.getElementById('exportBtn').addEventListener('click', () => this.exportCollection());
         document.getElementById('settingsBtn').addEventListener('click', () => this.showSettings());
+        document.getElementById('addCollectionBtn').addEventListener('click', () => this.createNewCollection());
 
         // Inheritance buttons
         document.getElementById('addGlobalHeaderBtn').addEventListener('click', () => this.addGlobalHeader());
@@ -1256,11 +1258,20 @@ class PostmanHelperApp {
     insertAtCursor(textarea, text) {
         const start = textarea.selectionStart;
         const end = textarea.selectionEnd;
-        const before = textarea.value.substring(0, start);
-        const after = textarea.value.substring(end);
-        textarea.value = before + text + after;
-        const newPos = start + text.length;
-        textarea.selectionStart = textarea.selectionEnd = newPos;
+        // If cursor is at position 0 with no selection and textarea has content,
+        // append at the end (cursor resets to 0 when textarea loses focus)
+        if (start === 0 && end === 0 && textarea.value.length > 0 && document.activeElement !== textarea) {
+            const needsNewline = textarea.value.length > 0 && !textarea.value.endsWith('\n');
+            textarea.value = textarea.value + (needsNewline ? '\n' : '') + text;
+            textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+        } else {
+            const before = textarea.value.substring(0, start);
+            const after = textarea.value.substring(end);
+            const needsNewline = before.length > 0 && !before.endsWith('\n');
+            textarea.value = before + (needsNewline ? '\n' : '') + text + after;
+            const newPos = start + (needsNewline ? 1 : 0) + text.length;
+            textarea.selectionStart = textarea.selectionEnd = newPos;
+        }
         textarea.focus();
     }
 
@@ -3233,6 +3244,12 @@ class PostmanHelperApp {
         const headers = {};
         for (const [k, v] of Object.entries(form.headers)) {
             headers[this.substituteVariables(k)] = this.substituteVariables(v);
+        }
+
+        // Warn about unresolved environment variables
+        const hasUnresolved = (s) => s && /\{\{\w+\}\}/.test(s);
+        if (hasUnresolved(url) || hasUnresolved(body) || Object.values(headers).some(v => hasUnresolved(v))) {
+            this.showToast('Warning: Request contains unresolved environment variables');
         }
 
         // Apply inheritance: add global headers
