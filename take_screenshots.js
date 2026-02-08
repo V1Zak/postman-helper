@@ -122,6 +122,107 @@ async function takeScreenshots() {
     await delay(1000);
     await capture(win, '06-inheritance.png');
 
+    // 7. Settings panel
+    await win.webContents.executeJavaScript(`
+        (function() {
+            const app = window.__app;
+            app.showSettings();
+        })();
+    `);
+    await delay(500);
+    await capture(win, '07-settings.png');
+
+    // Close settings
+    await win.webContents.executeJavaScript(`
+        (function() {
+            const overlay = document.getElementById('settingsModal');
+            if (overlay) overlay.click();
+        })();
+    `);
+    await delay(400);
+
+    // 8. Environment manager (empty)
+    await win.webContents.executeJavaScript(`
+        (function() {
+            const app = window.__app;
+            app.showEnvironmentManager();
+        })();
+    `);
+    await delay(500);
+    await capture(win, '08-env-manager-empty.png');
+
+    // Close env manager
+    await win.webContents.executeJavaScript(`
+        (function() {
+            const overlay = document.getElementById('envManagerOverlay');
+            if (overlay) overlay.click();
+        })();
+    `);
+    await delay(400);
+
+    // 9. Environment manager with environments (add sample envs then reopen)
+    await win.webContents.executeJavaScript(`
+        (function() {
+            const app = window.__app;
+            app.state.environments.push({
+                name: 'Development',
+                variables: { 'base_url': 'http://localhost:3000', 'api_key': 'dev_key_123', 'debug': 'true' }
+            });
+            app.state.environments.push({
+                name: 'Production',
+                variables: { 'base_url': 'https://api.example.com', 'api_key': 'prod_key_abc', 'debug': 'false' }
+            });
+            app.updateEnvironmentSelector();
+            app.showEnvironmentManager();
+        })();
+    `);
+    await delay(500);
+    await capture(win, '09-env-manager-with-vars.png');
+
+    // Close env manager
+    await win.webContents.executeJavaScript(`
+        (function() {
+            const overlay = document.getElementById('envManagerOverlay');
+            if (overlay) overlay.click();
+        })();
+    `);
+    await delay(400);
+
+    // 10. Context menu on a request tree item
+    await win.webContents.executeJavaScript(`
+        (function() {
+            const app = window.__app;
+            app.switchTab('request');
+            // Find a request item in the tree and show context menu directly
+            const treeItem = document.querySelector('.tree-item[data-type="request"]');
+            if (treeItem) {
+                const rect = treeItem.getBoundingClientRect();
+                const name = treeItem.dataset.id;
+                const request = app.findRequestByName(name);
+                if (request) {
+                    app.showContextMenu(rect.left + rect.width / 2, rect.top + rect.height + 2, [
+                        { label: 'Rename' },
+                        { label: 'Duplicate' },
+                        { label: 'Move to Folder' },
+                        { divider: true },
+                        { label: 'Delete', danger: true }
+                    ]);
+                }
+            }
+        })();
+    `);
+    await delay(500);
+    await capture(win, '10-context-menu.png');
+
+    // Close context menu
+    await win.webContents.executeJavaScript(`
+        (function() {
+            const app = window.__app;
+            app.hideContextMenu();
+        })();
+    `);
+    await delay(200);
+
     console.log('All screenshots taken!');
     app.quit();
 }
