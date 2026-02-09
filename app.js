@@ -928,7 +928,7 @@ class PostmanHelperApp {
         try {
             return JSON.parse(raw);
         } catch (strictError) {
-            // Lenient cleanup: strip comments, trailing commas, single quotes
+            // Lenient cleanup: strip comments, trailing commas, single quotes, template vars
             try {
                 let cleaned = raw;
                 // Remove single-line comments
@@ -944,12 +944,23 @@ class PostmanHelperApp {
                     const fixed = content.replace(/\\'/g, "'").replace(/"/g, '\\"');
                     return `"${fixed}"`;
                 });
+                // Quote unquoted {{var}} template variables used as bare JSON values
+                cleaned = cleaned.replace(/:\s*(\{\{[\w.]+\}\})\s*([,}\]\n\r])/g, ': "$1"$2');
                 return JSON.parse(cleaned);
             } catch (lenientError) {
                 // Throw error with position info from the original strict error
                 throw strictError;
             }
         }
+    }
+
+    restoreBareTemplateVars(original, formatted) {
+        const bareVars = new Set();
+        original.replace(/:\s*(\{\{[\w.]+\}\})\s*([,}\]\n\r])/g, (_, v) => { bareVars.add(v); });
+        bareVars.forEach(v => {
+            formatted = formatted.split(`"${v}"`).join(v);
+        });
+        return formatted;
     }
 
     setupBodyToggle() {
@@ -978,7 +989,8 @@ class PostmanHelperApp {
                 return;
             }
             try {
-                const formatted = JSON.stringify(this.tryParseJSON(raw), null, 2);
+                let formatted = JSON.stringify(this.tryParseJSON(raw), null, 2);
+                formatted = this.restoreBareTemplateVars(raw, formatted);
                 textarea.value = formatted;
                 errorDiv.style.display = 'none';
                 this.state.bodyViewMode = 'formatted';
@@ -1009,7 +1021,8 @@ class PostmanHelperApp {
                 return;
             }
             try {
-                const formatted = JSON.stringify(this.tryParseJSON(raw), null, 2);
+                let formatted = JSON.stringify(this.tryParseJSON(raw), null, 2);
+                formatted = this.restoreBareTemplateVars(raw, formatted);
                 textarea.value = formatted;
                 errorDiv.style.display = 'none';
                 this.state.bodyViewMode = 'formatted';
