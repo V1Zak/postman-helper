@@ -13,7 +13,7 @@
             --bg-tertiary: #eef0f4;
             --text-primary: #1e1e2e;
             --text-secondary: #5c5c6e;
-            --text-muted: #8b8b9e;
+            --text-muted: #737387;
             --accent: #FF6C37;
             --accent-hover: #e55a2b;
             --accent-subtle: rgba(255, 108, 55, 0.10);
@@ -49,7 +49,7 @@
             --bg-tertiary: #1c2333;
             --text-primary: #e6edf3;
             --text-secondary: #8b949e;
-            --text-muted: #6e7681;
+            --text-muted: #848d97;
             --accent: #FF6C37;
             --accent-hover: #ff8555;
             --accent-subtle: rgba(255, 108, 55, 0.12);
@@ -2503,53 +2503,53 @@
             <div class="header-divider"></div>
             <button id="loadSampleBtn" title="Load sample API collection">Sample</button>
             <button id="analyticsBtn" title="Usage analytics dashboard">Analytics</button>
-            <button id="settingsBtn" title="Settings (&#8984;,)">&#9881;&#65039;</button>
+            <button id="settingsBtn" title="Settings (&#8984;,)" aria-label="Settings">&#9881;&#65039;</button>
         </div>
     </header>
 
     <div class="container">
-        <div class="sidebar">
+        <nav class="sidebar" aria-label="Collections">
             <div class="sidebar-header">
-                <h3>Collections</h3>
+                <h3 id="sidebarHeading">Collections</h3>
                 <div class="btn-group">
                     <button id="addCollectionBtn" class="secondary">+ Add</button>
                 </div>
-                <div class="filter-bar" id="filterBar">
-                    <input type="text" id="filterText" placeholder="Search requests...">
-                    <button class="filter-clear-btn" id="filterClearBtn" title="Clear search">&times;</button>
-                    <div class="filter-methods" id="filterMethods">
-                        <button class="method-chip" data-method="GET">GET</button>
-                        <button class="method-chip" data-method="POST">POST</button>
-                        <button class="method-chip" data-method="PUT">PUT</button>
-                        <button class="method-chip" data-method="DELETE">DEL</button>
-                        <button class="method-chip" data-method="PATCH">PATCH</button>
+                <div class="filter-bar" id="filterBar" role="search" aria-label="Filter requests">
+                    <input type="text" id="filterText" placeholder="Search requests..." aria-label="Search requests">
+                    <button class="filter-clear-btn" id="filterClearBtn" title="Clear search" aria-label="Clear search">&times;</button>
+                    <div class="filter-methods" id="filterMethods" role="group" aria-label="Filter by method">
+                        <button class="method-chip" data-method="GET" aria-pressed="false">GET</button>
+                        <button class="method-chip" data-method="POST" aria-pressed="false">POST</button>
+                        <button class="method-chip" data-method="PUT" aria-pressed="false">PUT</button>
+                        <button class="method-chip" data-method="DELETE" aria-pressed="false">DEL</button>
+                        <button class="method-chip" data-method="PATCH" aria-pressed="false">PATCH</button>
                     </div>
-                    <div class="filter-toggles">
-                        <button class="filter-toggle-btn" id="filterHasTests">Has Tests</button>
-                        <button class="filter-toggle-btn" id="filterHasBody">Has Body</button>
-                        <button class="filter-toggle-btn" id="filterRegexToggle" title="Enable regex search">.*</button>
-                        <button class="filter-clear-btn" id="filterClearBtn">Clear</button>
+                    <div class="filter-toggles" role="group" aria-label="Filter options">
+                        <button class="filter-toggle-btn" id="filterHasTests" aria-pressed="false">Has Tests</button>
+                        <button class="filter-toggle-btn" id="filterHasBody" aria-pressed="false">Has Body</button>
+                        <button class="filter-toggle-btn" id="filterRegexToggle" title="Enable regex search" aria-pressed="false" aria-label="Enable regex search">.*</button>
+                        <button class="filter-clear-btn filter-clear-all-btn" id="filterClearAllBtn" aria-label="Clear all filters">Clear</button>
                     </div>
                 </div>
             </div>
             <div class="sidebar-content">
-                <div id="collectionTree" class="tree-view">
+                <div id="collectionTree" class="tree-view" role="tree" aria-labelledby="sidebarHeading">
                     <div class="empty-state">No collections yet</div>
                 </div>
             </div>
-        </div>
+        </nav>
 
         <div class="resize-handle" id="resizeHandle"></div>
 
         <div class="main-content" id="mainContent">
-            <div class="tabs">
-                <div class="tab active" data-tab="request">Request</div>
-                <div class="tab" data-tab="inheritance">Inheritance</div>
-                <div class="tab" data-tab="tests">Tests</div>
+            <div class="tabs" role="tablist" aria-label="Request editor tabs">
+                <div class="tab active" data-tab="request" role="tab" aria-selected="true" aria-controls="requestTab" tabindex="0" id="tab-request">Request</div>
+                <div class="tab" data-tab="inheritance" role="tab" aria-selected="false" aria-controls="inheritanceTab" tabindex="-1" id="tab-inheritance">Inheritance</div>
+                <div class="tab" data-tab="tests" role="tab" aria-selected="false" aria-controls="testsTab" tabindex="-1" id="tab-tests">Tests</div>
             </div>
 
             <div class="tab-content">
-                <div id="requestTab" class="tab-pane active">
+                <div id="requestTab" class="tab-pane active" role="tabpanel" aria-labelledby="tab-request">
                     <div class="empty-state">
                         <div style="font-size: 15px; color: var(--text-secondary); font-weight: 500; margin-bottom: 8px;">No request selected</div>
                         <div style="margin-bottom: 16px;">Select a request from the sidebar or create a new one to get started.</div>
@@ -2561,7 +2561,7 @@
                     </div>
                 </div>
 
-                <div id="inheritanceTab" class="tab-pane" style="display: none;">
+                <div id="inheritanceTab" class="tab-pane" role="tabpanel" aria-labelledby="tab-inheritance" style="display: none;">
                     <div class="inheritance-panel">
                         <h3>&#128279; Inheritance Settings</h3>
 
@@ -2619,7 +2619,7 @@
                     </div>
                 </div>
 
-                <div id="testsTab" class="tab-pane" style="display: none;">
+                <div id="testsTab" class="tab-pane" role="tabpanel" aria-labelledby="tab-tests" style="display: none;">
                     <div class="empty-state">
                         Select a request to view and edit tests
                     </div>
@@ -2698,9 +2698,9 @@
         </div>
     </div>
 
-    <div class="status-bar">
+    <div class="status-bar" role="status" aria-live="polite" aria-label="Application status">
         <div>Postman Helper v1.98 | Ready</div>
-        <div id="statusInfo">No collection loaded</div>
+        <div id="statusInfo" aria-live="polite">No collection loaded</div>
     </div>
 
     <script src="app.js"></script>
