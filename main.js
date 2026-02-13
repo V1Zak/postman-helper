@@ -10,6 +10,8 @@ const config = {
     modelName: process.env.MODEL_NAME || 'postman-helper-v1',
     chatApiKey: process.env.CHAT_API_KEY || '',
     apiBaseUrl: process.env.API_BASE_URL || 'https://api.example.com/v1',
+    aiBaseUrl: process.env.AI_BASE_URL || 'https://api.openai.com/v1',
+    aiModel: process.env.AI_MODEL || 'gpt-4o-mini',
     debugMode: process.env.DEBUG_MODE === 'true',
     logLevel: process.env.LOG_LEVEL || 'info'
 }
@@ -243,18 +245,31 @@ ipcMain.handle('load-plugin', async (event, dir, mainFile) => {
 })
 
 // ===== Feature 18: AI-Powered Suggestions =====
-const { AIService } = require('./ai')
-const aiService = new AIService({
-  chatApiKey: config.chatApiKey,
-  aiBaseUrl: process.env.AI_BASE_URL,
-  aiModel: process.env.AI_MODEL
-})
+// Graceful degradation: if ai.js fails to load, AI features are disabled (#61)
+let aiService
+try {
+  const { AIService } = require('./ai')
+  aiService = new AIService({
+    chatApiKey: config.chatApiKey,
+    aiBaseUrl: config.aiBaseUrl,
+    aiModel: config.aiModel
+  })
+} catch (e) {
+  console.error('Failed to load AI service:', e.message)
+  aiService = { enabled: false }
+}
+
+// Input validation helper for IPC handlers (#60)
+function validateAIInput(data) {
+  return data && typeof data === 'object'
+}
 
 ipcMain.handle('ai-is-enabled', async () => {
   return { enabled: aiService.enabled }
 })
 
 ipcMain.handle('ai-suggest-headers', async (event, data) => {
+  if (!validateAIInput(data)) return { suggestions: [], error: 'Invalid input' }
   try {
     return await aiService.suggestHeaders(data)
   } catch (error) {
@@ -263,6 +278,7 @@ ipcMain.handle('ai-suggest-headers', async (event, data) => {
 })
 
 ipcMain.handle('ai-generate-body', async (event, data) => {
+  if (!validateAIInput(data)) return { body: '', error: 'Invalid input' }
   try {
     return await aiService.generateBody(data)
   } catch (error) {
@@ -271,6 +287,7 @@ ipcMain.handle('ai-generate-body', async (event, data) => {
 })
 
 ipcMain.handle('ai-generate-tests', async (event, data) => {
+  if (!validateAIInput(data)) return { tests: '', error: 'Invalid input' }
   try {
     return await aiService.generateTests(data)
   } catch (error) {
@@ -279,6 +296,7 @@ ipcMain.handle('ai-generate-tests', async (event, data) => {
 })
 
 ipcMain.handle('ai-analyze-error', async (event, data) => {
+  if (!validateAIInput(data)) return { analysis: '', error: 'Invalid input' }
   try {
     return await aiService.analyzeError(data)
   } catch (error) {
@@ -287,6 +305,7 @@ ipcMain.handle('ai-analyze-error', async (event, data) => {
 })
 
 ipcMain.handle('ai-suggest-url', async (event, data) => {
+  if (!validateAIInput(data)) return { suggestions: [], error: 'Invalid input' }
   try {
     return await aiService.suggestUrl(data)
   } catch (error) {

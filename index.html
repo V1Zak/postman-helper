@@ -387,7 +387,6 @@
             color: var(--accent);
         }
 
-        /* ===== Status Bar ===== */
         /* ===== Analytics Dashboard ===== */
         .analytics-panel {
             position: fixed;
@@ -636,7 +635,12 @@
             transition: opacity 0.2s;
             display: none;
         }
-        .ai-btn:hover { opacity: 1; }
+        .ai-btn:hover {
+            opacity: 1;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            box-shadow: none;
+            transform: none;
+        }
         .ai-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .ai-btn.loading { opacity: 0.6; }
         .ai-btn.loading::after { content: '...'; }
@@ -659,6 +663,7 @@
             font-size: 12px;
         }
 
+        /* ===== Status Bar ===== */
         .status-bar {
             background-color: var(--bg-secondary);
             padding: 8px 15px;
