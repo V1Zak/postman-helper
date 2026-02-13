@@ -1575,6 +1575,225 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = Object.assign(module.exports || {}, { FormatParser });
 }
 
+// AnalyticsCollector — local-first usage analytics
+class AnalyticsCollector {
+    constructor() {
+        this.events = [];
+        this.sessionStart = new Date().toISOString();
+        this.stats = {
+            requestsSent: 0,
+            requestsCreated: 0,
+            requestsDeleted: 0,
+            collectionsCreated: 0,
+            collectionsImported: 0,
+            collectionsExported: 0,
+            searchesPerformed: 0,
+            totalSessionTime: 0,
+            methodBreakdown: {},
+            statusCodeBreakdown: {},
+            responseTimes: [],
+            dailyActivity: {},
+            mostUsedEndpoints: {}
+        };
+    }
+
+    track(eventName, data = {}) {
+        const event = {
+            event: eventName,
+            timestamp: new Date().toISOString(),
+            data: data
+        };
+        this.events.push(event);
+        this._updateStats(eventName, data);
+
+        // Keep event log bounded (last 1000 events)
+        if (this.events.length > 1000) {
+            this.events = this.events.slice(-1000);
+        }
+    }
+
+    _updateStats(eventName, data) {
+        const today = new Date().toISOString().split('T')[0];
+        if (!this.stats.dailyActivity[today]) {
+            this.stats.dailyActivity[today] = { requests: 0, created: 0, errors: 0 };
+        }
+
+        switch (eventName) {
+            case 'request_sent':
+                this.stats.requestsSent++;
+                this.stats.dailyActivity[today].requests++;
+                if (data.method) {
+                    this.stats.methodBreakdown[data.method] = (this.stats.methodBreakdown[data.method] || 0) + 1;
+                }
+                if (data.statusCode !== undefined) {
+                    const code = String(data.statusCode);
+                    this.stats.statusCodeBreakdown[code] = (this.stats.statusCodeBreakdown[code] || 0) + 1;
+                }
+                if (data.responseTime !== undefined) {
+                    this.stats.responseTimes.push(data.responseTime);
+                    // Keep bounded to last 5000 measurements
+                    if (this.stats.responseTimes.length > 5000) {
+                        this.stats.responseTimes = this.stats.responseTimes.slice(-5000);
+                    }
+                }
+                if (data.url) {
+                    // Normalize URL to pathname for grouping
+                    let endpoint = data.url;
+                    try { endpoint = new URL(data.url).pathname; } catch { /* use raw */ }
+                    this.stats.mostUsedEndpoints[endpoint] = (this.stats.mostUsedEndpoints[endpoint] || 0) + 1;
+                }
+                break;
+            case 'request_created':
+                this.stats.requestsCreated++;
+                this.stats.dailyActivity[today].created++;
+                break;
+            case 'request_deleted':
+                this.stats.requestsDeleted++;
+                break;
+            case 'collection_created':
+                this.stats.collectionsCreated++;
+                break;
+            case 'collection_imported':
+                this.stats.collectionsImported++;
+                break;
+            case 'collection_exported':
+                this.stats.collectionsExported++;
+                break;
+            case 'search_performed':
+                this.stats.searchesPerformed++;
+                break;
+            case 'error':
+                this.stats.dailyActivity[today].errors++;
+                break;
+        }
+    }
+
+    getAverageResponseTime() {
+        const times = this.stats.responseTimes;
+        if (times.length === 0) return 0;
+        return Math.round(times.reduce((a, b) => a + b, 0) / times.length);
+    }
+
+    getPercentile(p) {
+        const times = [...this.stats.responseTimes].sort((a, b) => a - b);
+        if (times.length === 0) return 0;
+        const idx = Math.ceil((p / 100) * times.length) - 1;
+        return times[Math.max(0, idx)];
+    }
+
+    getSuccessRate() {
+        const codes = this.stats.statusCodeBreakdown;
+        const total = Object.values(codes).reduce((a, b) => a + b, 0);
+        if (total === 0) return 0;
+        const success = Object.entries(codes)
+            .filter(([code]) => code.startsWith('2'))
+            .reduce((sum, [, count]) => sum + count, 0);
+        return Math.round((success / total) * 100);
+    }
+
+    getTopEndpoints(n = 10) {
+        return Object.entries(this.stats.mostUsedEndpoints)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, n);
+    }
+
+    getRecentActivity(days = 30) {
+        const result = [];
+        const now = new Date();
+        for (let i = days - 1; i >= 0; i--) {
+            const d = new Date(now);
+            d.setDate(d.getDate() - i);
+            const key = d.toISOString().split('T')[0];
+            result.push({
+                date: key,
+                requests: (this.stats.dailyActivity[key] || {}).requests || 0,
+                created: (this.stats.dailyActivity[key] || {}).created || 0,
+                errors: (this.stats.dailyActivity[key] || {}).errors || 0
+            });
+        }
+        return result;
+    }
+
+    toJSON() {
+        return {
+            sessionStart: this.sessionStart,
+            stats: this.stats,
+            events: this.events,
+            lastUpdated: new Date().toISOString()
+        };
+    }
+
+    fromJSON(data) {
+        if (!data) return;
+        if (data.stats) {
+            // Merge stats: accumulate counters
+            const s = data.stats;
+            this.stats.requestsSent += s.requestsSent || 0;
+            this.stats.requestsCreated += s.requestsCreated || 0;
+            this.stats.requestsDeleted += s.requestsDeleted || 0;
+            this.stats.collectionsCreated += s.collectionsCreated || 0;
+            this.stats.collectionsImported += s.collectionsImported || 0;
+            this.stats.collectionsExported += s.collectionsExported || 0;
+            this.stats.searchesPerformed += s.searchesPerformed || 0;
+            this.stats.totalSessionTime += s.totalSessionTime || 0;
+
+            // Merge maps
+            for (const [k, v] of Object.entries(s.methodBreakdown || {})) {
+                this.stats.methodBreakdown[k] = (this.stats.methodBreakdown[k] || 0) + v;
+            }
+            for (const [k, v] of Object.entries(s.statusCodeBreakdown || {})) {
+                this.stats.statusCodeBreakdown[k] = (this.stats.statusCodeBreakdown[k] || 0) + v;
+            }
+            for (const [k, v] of Object.entries(s.mostUsedEndpoints || {})) {
+                this.stats.mostUsedEndpoints[k] = (this.stats.mostUsedEndpoints[k] || 0) + v;
+            }
+            for (const [k, v] of Object.entries(s.dailyActivity || {})) {
+                if (!this.stats.dailyActivity[k]) {
+                    this.stats.dailyActivity[k] = { requests: 0, created: 0, errors: 0 };
+                }
+                this.stats.dailyActivity[k].requests += v.requests || 0;
+                this.stats.dailyActivity[k].created += v.created || 0;
+                this.stats.dailyActivity[k].errors += v.errors || 0;
+            }
+
+            // Append response times (bounded)
+            if (Array.isArray(s.responseTimes)) {
+                this.stats.responseTimes = this.stats.responseTimes.concat(s.responseTimes);
+                if (this.stats.responseTimes.length > 5000) {
+                    this.stats.responseTimes = this.stats.responseTimes.slice(-5000);
+                }
+            }
+        }
+        if (Array.isArray(data.events)) {
+            this.events = data.events.slice(-1000);
+        }
+    }
+
+    reset() {
+        this.events = [];
+        this.sessionStart = new Date().toISOString();
+        this.stats = {
+            requestsSent: 0,
+            requestsCreated: 0,
+            requestsDeleted: 0,
+            collectionsCreated: 0,
+            collectionsImported: 0,
+            collectionsExported: 0,
+            searchesPerformed: 0,
+            totalSessionTime: 0,
+            methodBreakdown: {},
+            statusCodeBreakdown: {},
+            responseTimes: [],
+            dailyActivity: {},
+            mostUsedEndpoints: {}
+        };
+    }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Object.assign(module.exports || {}, { AnalyticsCollector });
+}
+
 // AppState class - manages application state
 class AppState {
     constructor() {
@@ -1734,6 +1953,7 @@ class PostmanHelperApp {
         this.setupEventListeners();
         this.setupDragAndDrop();
         this.setupContextMenus();
+        this.analytics = new AnalyticsCollector();
         this.loadAutoSave();
         this.initChangeTracking();
         // Sample data loaded via Load Sample button or first-launch prompt
@@ -1853,6 +2073,10 @@ class PostmanHelperApp {
             this.triggerAutoSave();
         });
 
+        // Analytics button
+        const analyticsBtn = document.getElementById('analyticsBtn');
+        if (analyticsBtn) analyticsBtn.addEventListener('click', () => this.showAnalytics());
+
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboardShortcuts(e));
 
@@ -1869,6 +2093,9 @@ class PostmanHelperApp {
                 debounceTimer = setTimeout(() => {
                     this.state.filters.text = filterText.value.toLowerCase();
                     this.updateCollectionTree();
+                    if (filterText.value.trim()) {
+                        this.analytics.track('search_performed', { query: filterText.value.trim() });
+                    }
                 }, 200);
             });
         }
@@ -2675,6 +2902,7 @@ class PostmanHelperApp {
                 this.state.currentFolder = null;
                 this.updateCollectionTree();
                 this.state.markAsChanged();
+                this.analytics.track('collection_created', { name });
             }
         });
     }
@@ -2697,6 +2925,7 @@ class PostmanHelperApp {
                 this.updateCollectionTree();
                 this.switchTab('request');
                 this.state.markAsChanged();
+                this.analytics.track('request_created', { name, method: 'GET' });
             }
         });
     }
@@ -3211,8 +3440,9 @@ class PostmanHelperApp {
 
     deleteRequest() {
         if (!this.state.currentRequest || !this.state.currentCollection) return;
+        const deleteName = this.state.currentRequest.name;
 
-        DialogSystem.showConfirm(`Are you sure you want to delete "${this.state.currentRequest.name}"?`, (confirmDelete) => {
+        DialogSystem.showConfirm(`Are you sure you want to delete "${deleteName}"?`, (confirmDelete) => {
             if (confirmDelete) {
                 this.state.currentCollection.requests = this.state.currentCollection.requests.filter(
                     r => r !== this.state.currentRequest
@@ -3221,6 +3451,7 @@ class PostmanHelperApp {
                 this.updateCollectionTree();
                 this.switchTab('request');
                 this.state.markAsChanged();
+                this.analytics.track('request_deleted', { name: deleteName });
             }
         });
     }
@@ -3648,10 +3879,15 @@ class PostmanHelperApp {
                 this.state.currentFolder = null;
                 this.updateCollectionTree();
                 this.switchTab('request');
+                this.analytics.track('collection_imported', {
+                    format,
+                    requestCount: collection.requests.length
+                });
             }
         } catch (error) {
             console.error('Import error:', error);
             alert('Error importing collection: ' + error.message);
+            this.analytics.track('error', { message: error.message, context: 'importCollection' });
         }
     }
 
@@ -3675,6 +3911,10 @@ class PostmanHelperApp {
                 this.state.updateStatusBar();
                 this.updateDirtyIndicators();
                 alert(`Collection exported successfully to: ${result.path}`);
+                this.analytics.track('collection_exported', {
+                    name: this.state.currentCollection.name,
+                    requestCount: this.state.currentCollection.requests.length
+                });
             }
         } catch (error) {
             console.error('Export error:', error);
@@ -4916,15 +5156,24 @@ class PostmanHelperApp {
         }
 
         try {
+            const startTime = Date.now();
             const result = await window.electronAPI.sendRequest({
                 method: form.method,
                 url: url,
                 headers: headers,
                 body: body
             });
+            const elapsed = result.time || (Date.now() - startTime);
             this.displayResponse(result);
+            this.analytics.track('request_sent', {
+                method: form.method,
+                url: url,
+                statusCode: result.status,
+                responseTime: elapsed
+            });
         } catch (error) {
             this.displayResponse({ success: false, error: error.message || 'Request failed' });
+            this.analytics.track('error', { message: error.message, context: 'sendRequest' });
         } finally {
             if (sendBtn) {
                 sendBtn.disabled = false;
@@ -5249,6 +5498,146 @@ class PostmanHelperApp {
         });
     }
 
+    // ===== Feature 5: Analytics Dashboard =====
+
+    showAnalytics() {
+        const panel = document.getElementById('analyticsPanel');
+        if (!panel) return;
+        panel.style.display = 'block';
+        this.renderAnalytics();
+
+        // Wire up panel buttons
+        document.getElementById('closeAnalyticsBtn').onclick = () => {
+            panel.style.display = 'none';
+        };
+        document.getElementById('exportAnalyticsBtn').onclick = () => this.exportAnalytics();
+        document.getElementById('clearAnalyticsBtn').onclick = () => {
+            DialogSystem.showConfirm('Clear all analytics data? This cannot be undone.', (confirmed) => {
+                if (confirmed) {
+                    this.analytics.reset();
+                    this.renderAnalytics();
+                    this.triggerAutoSave();
+                    this.showToast('Analytics data cleared');
+                }
+            });
+        };
+    }
+
+    renderAnalytics() {
+        const a = this.analytics;
+
+        // Summary cards
+        const setEl = (id, text) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        };
+        setEl('statRequestsSent', a.stats.requestsSent);
+        setEl('statAvgResponse', a.getAverageResponseTime() + 'ms');
+        setEl('statSuccessRate', a.getSuccessRate() + '%');
+        setEl('statCollections', a.stats.collectionsCreated);
+
+        // Method breakdown chart
+        this._renderBarChart('methodChart', 'HTTP Methods', a.stats.methodBreakdown, {
+            GET: '#61affe', POST: '#49cc90', PUT: '#fca130',
+            DELETE: '#f93e3e', PATCH: '#50e3c2', HEAD: '#9012fe', OPTIONS: '#888'
+        });
+
+        // Status code chart
+        const statusColors = {};
+        for (const code of Object.keys(a.stats.statusCodeBreakdown)) {
+            if (code.startsWith('2')) statusColors[code] = '#49cc90';
+            else if (code.startsWith('3')) statusColors[code] = '#61affe';
+            else if (code.startsWith('4')) statusColors[code] = '#fca130';
+            else if (code.startsWith('5')) statusColors[code] = '#f93e3e';
+            else statusColors[code] = '#888';
+        }
+        this._renderBarChart('statusChart', 'Status Codes', a.stats.statusCodeBreakdown, statusColors);
+
+        // Top endpoints table
+        this._renderEndpointsTable('endpointsChart', a.getTopEndpoints(10));
+
+        // Activity chart (last 30 days)
+        this._renderActivityChart('activityChart', a.getRecentActivity(30));
+    }
+
+    _renderBarChart(containerId, title, data, colors) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        const entries = Object.entries(data).sort((a, b) => b[1] - a[1]);
+        const max = Math.max(...entries.map(e => e[1]), 1);
+
+        let html = `<h3>${title}</h3>`;
+        if (entries.length === 0) {
+            html += '<div class="activity-empty">No data yet</div>';
+        } else {
+            html += '<div class="bar-chart">';
+            for (const [label, count] of entries) {
+                const pct = (count / max) * 100;
+                const color = (colors && colors[label]) || 'var(--accent)';
+                html += `<div class="bar-row">
+                    <span class="bar-label">${label}</span>
+                    <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+                    <span class="bar-value">${count}</span>
+                </div>`;
+            }
+            html += '</div>';
+        }
+        container.innerHTML = html;
+    }
+
+    _renderEndpointsTable(containerId, topEndpoints) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        let html = '<h3>Top Endpoints</h3>';
+        if (topEndpoints.length === 0) {
+            html += '<div class="activity-empty">No data yet</div>';
+        } else {
+            html += '<table class="endpoints-table">';
+            for (const [endpoint, count] of topEndpoints) {
+                html += `<tr><td>${endpoint}</td><td>${count}</td></tr>`;
+            }
+            html += '</table>';
+        }
+        container.innerHTML = html;
+    }
+
+    _renderActivityChart(containerId, activity) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        const max = Math.max(...activity.map(d => d.requests), 1);
+        const hasData = activity.some(d => d.requests > 0);
+
+        let html = '<h3>Daily Activity (Last 30 Days)</h3>';
+        if (!hasData) {
+            html += '<div class="activity-empty">No data yet</div>';
+        } else {
+            html += '<div class="activity-chart">';
+            for (const day of activity) {
+                const height = Math.max((day.requests / max) * 100, 2);
+                html += `<div class="activity-bar" style="height:${height}%" title="${day.date}: ${day.requests} requests"></div>`;
+            }
+            html += '</div>';
+        }
+        container.innerHTML = html;
+    }
+
+    async exportAnalytics() {
+        try {
+            const content = JSON.stringify(this.analytics.toJSON(), null, 2);
+            const result = await window.electronAPI.saveFile({
+                defaultPath: 'postman-helper-analytics.json',
+                filters: [{ name: 'JSON Files', extensions: ['json'] }],
+                content: content
+            });
+            if (result.success) {
+                this.showToast('Analytics exported', 2000, 'success');
+            }
+        } catch (err) {
+            console.error('Export analytics failed:', err);
+            this.showToast('Failed to export analytics');
+        }
+    }
+
     // ===== Feature 4: Auto-save & Persistence =====
 
     triggerAutoSave() {
@@ -5271,6 +5660,7 @@ class PostmanHelperApp {
                 activeEnvironment: this.state.activeEnvironment,
                 inheritance: this.state.inheritanceManager.toJSON ? this.state.inheritanceManager.toJSON() : null,
                 requestHistory: this.collectRequestHistory(),
+                analytics: this.analytics.toJSON(),
                 settings: {
                     darkMode: this.state.darkMode,
                     autoSave: this.state.autoSave,
@@ -5353,6 +5743,11 @@ class PostmanHelperApp {
             // Restore version history for all requests
             if (data.requestHistory) {
                 this.restoreRequestHistory(data.requestHistory);
+            }
+
+            // Restore analytics
+            if (data.analytics) {
+                this.analytics.fromJSON(data.analytics);
             }
 
             if (this.state.currentCollection) {
