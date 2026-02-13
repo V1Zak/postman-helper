@@ -1,6 +1,6 @@
 {
   "name": "postman-helper",
-  "version": "1.0.0",
+  "version": "1.98.0",
   "description": "Postman Helper - A Mac OS app for creating and managing Postman API requests",
   "main": "main.js",
   "bin": {
