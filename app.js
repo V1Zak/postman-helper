@@ -1126,10 +1126,9 @@ class FormatParser {
     /**
      * Detect the format of a file's content.
      * @param {string} content - Raw file content
-     * @param {string} [filePath] - Optional file path for extension hinting
      * @returns {'openapi-3'|'swagger-2'|'har'|'curl'|'postman-v2.1'|'insomnia'|'simple'|'unknown'}
      */
-    static detectFormat(content, filePath) {
+    static detectFormat(content) {
         if (!content || typeof content !== 'string') return 'unknown';
         const trimmed = content.trim();
 
@@ -1505,28 +1504,28 @@ class FormatParser {
     static toCurl(request, baseUrl) {
         const method = (request.method || 'GET').toUpperCase();
         const url = (baseUrl || '') + (request.url || '');
+        const esc = (s) => String(s).replace(/'/g, "'\\''");
         let cmd = `curl -X ${method}`;
 
         // Headers
         const headers = request.headers || {};
         if (typeof headers === 'object' && !Array.isArray(headers)) {
             for (const [key, value] of Object.entries(headers)) {
-                cmd += ` \\\n  -H '${key}: ${value}'`;
+                cmd += ` \\\n  -H '${esc(key)}: ${esc(value)}'`;
             }
         } else if (Array.isArray(headers)) {
             for (const h of headers) {
-                if (h.key) cmd += ` \\\n  -H '${h.key}: ${h.value || ''}'`;
+                if (h.key) cmd += ` \\\n  -H '${esc(h.key)}: ${esc(h.value || '')}'`;
             }
         }
 
         // Body
         const body = request.body || '';
         if (body) {
-            const escaped = body.replace(/'/g, "'\\''");
-            cmd += ` \\\n  -d '${escaped}'`;
+            cmd += ` \\\n  -d '${esc(body)}'`;
         }
 
-        cmd += ` \\\n  '${url}'`;
+        cmd += ` \\\n  '${esc(url)}'`;
         return cmd;
     }
 
@@ -3597,18 +3596,26 @@ class PostmanHelperApp {
 
             if (result.success) {
                 const collection = new Collection('Imported Collection');
-                const format = FormatParser.detectFormat(result.content, result.path);
+                const format = FormatParser.detectFormat(result.content);
 
                 switch (format) {
                     case 'openapi-3': {
-                        const spec = JSON.parse(result.content);
+                        let spec;
+                        try { spec = JSON.parse(result.content); } catch {
+                            this.showToast('YAML OpenAPI files are not supported — please convert to JSON first');
+                            return;
+                        }
                         const parsed = FormatParser.parseOpenAPI3(spec);
                         FormatParser.importParsedInto(collection, parsed);
                         this.showToast(`Imported OpenAPI 3.x: ${parsed.name}`, 2000, 'success');
                         break;
                     }
                     case 'swagger-2': {
-                        const spec = JSON.parse(result.content);
+                        let spec;
+                        try { spec = JSON.parse(result.content); } catch {
+                            this.showToast('YAML Swagger files are not supported — please convert to JSON first');
+                            return;
+                        }
                         const parsed = FormatParser.parseSwagger2(spec);
                         FormatParser.importParsedInto(collection, parsed);
                         this.showToast(`Imported Swagger 2.0: ${parsed.name}`, 2000, 'success');

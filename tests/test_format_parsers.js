@@ -18,7 +18,7 @@ let Request, Collection, Folder, FormatParser;
  * importParsedInto can instantiate them (otherwise Node's built-in fetch Request
  * class shadows the app's Request class).
  */
-function extractFormatParser(appClasses) {
+function extractFormatParser() {
     const appPath = path.join(__dirname, '..', 'app.js');
     const src = fs.readFileSync(appPath, 'utf-8');
     const lines = src.split('\n');
@@ -891,6 +891,23 @@ describe('FormatParser.toCurl', () => {
             body: "it's a test"
         });
         assert.ok(curl.includes("-d 'it'\\''s a test'"));
+    });
+
+    it('escapes single quotes in header values', () => {
+        const curl = FormatParser.toCurl({
+            method: 'GET',
+            url: 'https://example.com',
+            headers: { 'X-Custom': "it's quoted" }
+        });
+        assert.ok(curl.includes("-H 'X-Custom: it'\\''s quoted'"));
+    });
+
+    it('escapes single quotes in URL', () => {
+        const curl = FormatParser.toCurl({
+            method: 'GET',
+            url: "https://example.com/search?q=it's"
+        });
+        assert.ok(curl.includes("'https://example.com/search?q=it'\\''s'"));
     });
 
     it('prepends baseUrl when provided', () => {
