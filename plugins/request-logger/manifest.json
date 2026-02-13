@@ -1,0 +1,8 @@
+{
+    "name": "request-logger",
+    "version": "1.0.0",
+    "description": "Logs all sent requests and responses to the console",
+    "author": "Postman Helper",
+    "main": "main.js",
+    "hooks": ["onBeforeRequestSend", "onResponseReceive"]
+}

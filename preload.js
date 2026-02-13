@@ -30,6 +30,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   autoLoad: () => ipcRenderer.invoke('auto-load'),
   clearAutosave: () => ipcRenderer.invoke('clear-autosave'),
 
+  // Plugin system
+  listPlugins: () => ipcRenderer.invoke('list-plugins'),
+  readPluginManifest: (dir) => ipcRenderer.invoke('read-plugin-manifest', dir),
+  loadPlugin: (dir, mainFile) => ipcRenderer.invoke('load-plugin', dir, mainFile),
+
   // Add more API methods as needed
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
   onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', callback)
