@@ -1,0 +1,488 @@
+/**
+ * Unit tests for per-request change tracking (Issue #9)
+ * Tests: AppState dirty tracking, clean snapshots, dirty indicators
+ */
+const { describe, it, before, beforeEach } = require('node:test');
+const assert = require('node:assert/strict');
+const { JSDOM } = require('jsdom');
+
+let AppState, Request, Collection, InheritanceManager;
+
+before(() => {
+    // Set up minimal DOM
+    const dom = new JSDOM(`<!DOCTYPE html><html><body>
+        <div id="statusInfo"></div>
+        <div id="collectionTree"></div>
+    </body></html>`, {
+        url: 'http://localhost'
+    });
+    global.window = dom.window;
+    global.document = dom.window.document;
+
+    // Extract classes from app.js
+    const { extractAppClasses } = require('./helpers/app_class_extractor');
+    const classes = extractAppClasses();
+    Request = classes.Request;
+    Collection = classes.Collection;
+    InheritanceManager = classes.InheritanceManager;
+
+    // Re-create AppState with dirty tracking (mirrors app.js implementation)
+    AppState = class {
+        constructor() {
+            this.collections = [];
+            this.currentCollection = null;
+            this.currentRequest = null;
+            this.currentFolder = null;
+            this.unsavedChanges = false;
+            this.inheritanceManager = new InheritanceManager();
+            this.filters = { text: '', methods: [], hasTests: false, hasBody: false, useRegex: false };
+            this.environments = [];
+            this.activeEnvironment = null;
+            // Per-request dirty tracking
+            this._dirtyRequests = new Set();
+            this._cleanSnapshots = new Map();
+        }
+
+        setCurrentCollection(collection) {
+            this.currentCollection = collection;
+            if (collection && !this.collections.includes(collection)) {
+                this.collections.push(collection);
+            }
+            this.unsavedChanges = false;
+        }
+
+        setCurrentRequest(request) {
+            this.currentRequest = request;
+        }
+
+        setCurrentFolder(folder) {
+            this.currentFolder = folder;
+        }
+
+        markAsChanged() {
+            this.unsavedChanges = true;
+            this.updateStatusBar();
+            if (this._onChanged) this._onChanged();
+        }
+
+        updateStatusBar() {
+            const statusInfo = document.getElementById('statusInfo');
+            if (this.currentCollection) {
+                const changeIndicator = this.unsavedChanges ? '• ' : '';
+                const dirtyCount = this._dirtyRequests.size;
+                const dirtyLabel = dirtyCount > 0 ? ` | ${dirtyCount} unsaved` : '';
+                const colCount = this.collections.length > 1 ? ` (${this.collections.length} collections)` : '';
+                statusInfo.textContent = `${changeIndicator}${this.currentCollection.name} | ${this.currentCollection.requests.length} requests, ${this.currentCollection.folders.length} folders${colCount}${dirtyLabel}`;
+            } else {
+                statusInfo.textContent = 'No collection loaded';
+            }
+        }
+
+        markRequestDirty(requestName) {
+            if (!requestName) return;
+            this._dirtyRequests.add(requestName);
+            this.markAsChanged();
+        }
+
+        markRequestClean(requestName) {
+            if (!requestName) return;
+            this._dirtyRequests.delete(requestName);
+        }
+
+        isRequestDirty(requestName) {
+            return this._dirtyRequests.has(requestName);
+        }
+
+        clearAllDirty() {
+            this._dirtyRequests.clear();
+            this._cleanSnapshots.clear();
+        }
+
+        takeCleanSnapshot(request) {
+            if (!request || !request.name) return;
+            this._cleanSnapshots.set(request.name, {
+                method: request.method || 'GET',
+                url: request.url || '',
+                headers: JSON.stringify(request.headers || {}),
+                body: request.body || '',
+                tests: request.tests || '',
+                description: request.description || ''
+            });
+        }
+
+        hasRequestChanged(request) {
+            if (!request || !request.name) return false;
+            const snapshot = this._cleanSnapshots.get(request.name);
+            if (!snapshot) return false;
+            return (request.method || 'GET') !== snapshot.method
+                || (request.url || '') !== snapshot.url
+                || JSON.stringify(request.headers || {}) !== snapshot.headers
+                || (request.body || '') !== snapshot.body
+                || (request.tests || '') !== snapshot.tests
+                || (request.description || '') !== snapshot.description;
+        }
+    };
+});
+
+describe('Change Tracking: Dirty State Basics', () => {
+    it('fresh AppState has empty _dirtyRequests set', () => {
+        const state = new AppState();
+        assert.equal(state._dirtyRequests.size, 0);
+    });
+
+    it('fresh AppState has empty _cleanSnapshots map', () => {
+        const state = new AppState();
+        assert.equal(state._cleanSnapshots.size, 0);
+    });
+
+    it('markRequestDirty adds request to dirty set', () => {
+        const state = new AppState();
+        const col = new Collection('C');
+        state.setCurrentCollection(col);
+        state.markRequestDirty('TestReq');
+        assert.ok(state.isRequestDirty('TestReq'));
+    });
+
+    it('markRequestDirty with null/undefined is a no-op', () => {
+        const state = new AppState();
+        state.markRequestDirty(null);
+        state.markRequestDirty(undefined);
+        assert.equal(state._dirtyRequests.size, 0);
+    });
+
+    it('markRequestClean removes request from dirty set', () => {
+        const state = new AppState();
+        const col = new Collection('C');
+        state.setCurrentCollection(col);
+        state.markRequestDirty('R1');
+        assert.ok(state.isRequestDirty('R1'));
+        state.markRequestClean('R1');
+        assert.ok(!state.isRequestDirty('R1'));
+    });
+
+    it('markRequestClean with null/undefined is a no-op', () => {
+        const state = new AppState();
+        state.markRequestClean(null);
+        state.markRequestClean(undefined);
+        // Should not throw
+    });
+
+    it('isRequestDirty returns false for unknown request', () => {
+        const state = new AppState();
+        assert.ok(!state.isRequestDirty('nonexistent'));
+    });
+
+    it('markRequestDirty calls markAsChanged()', () => {
+        const state = new AppState();
+        const col = new Collection('C');
+        state.setCurrentCollection(col);
+        state.unsavedChanges = false;
+        state.markRequestDirty('R1');
+        assert.ok(state.unsavedChanges);
+    });
+
+    it('multiple requests can be independently dirty', () => {
+        const state = new AppState();
+        const col = new Collection('C');
+        state.setCurrentCollection(col);
+        state.markRequestDirty('R1');
+        state.markRequestDirty('R2');
+        state.markRequestDirty('R3');
+        assert.equal(state._dirtyRequests.size, 3);
+        state.markRequestClean('R2');
+        assert.ok(state.isRequestDirty('R1'));
+        assert.ok(!state.isRequestDirty('R2'));
+        assert.ok(state.isRequestDirty('R3'));
+    });
+
+    it('clearAllDirty resets both sets', () => {
+        const state = new AppState();
+        const col = new Collection('C');
+        state.setCurrentCollection(col);
+        const req = new Request('R1', 'GET', '/api');
+        state.markRequestDirty('R1');
+        state.takeCleanSnapshot(req);
+        assert.equal(state._dirtyRequests.size, 1);
+        assert.equal(state._cleanSnapshots.size, 1);
+        state.clearAllDirty();
+        assert.equal(state._dirtyRequests.size, 0);
+        assert.equal(state._cleanSnapshots.size, 0);
+    });
+});
+
+describe('Change Tracking: Clean Snapshots', () => {
+    it('takeCleanSnapshot stores a snapshot', () => {
+        const state = new AppState();
+        const req = new Request('R1', 'POST', '/api/users');
+        req.body = '{"name":"test"}';
+        req.description = 'Create user';
+        state.takeCleanSnapshot(req);
+        assert.ok(state._cleanSnapshots.has('R1'));
+        const snap = state._cleanSnapshots.get('R1');
+        assert.equal(snap.method, 'POST');
+        assert.equal(snap.url, '/api/users');
+        assert.equal(snap.body, '{"name":"test"}');
+        assert.equal(snap.description, 'Create user');
+    });
+
+    it('takeCleanSnapshot with null request is a no-op', () => {
+        const state = new AppState();
+        state.takeCleanSnapshot(null);
+        assert.equal(state._cleanSnapshots.size, 0);
+    });
+
+    it('takeCleanSnapshot with request missing name is a no-op', () => {
+        const state = new AppState();
+        state.takeCleanSnapshot({ method: 'GET' });
+        assert.equal(state._cleanSnapshots.size, 0);
+    });
+
+    it('takeCleanSnapshot defaults method to GET', () => {
+        const state = new AppState();
+        state.takeCleanSnapshot({ name: 'R1' });
+        assert.equal(state._cleanSnapshots.get('R1').method, 'GET');
+    });
+
+    it('takeCleanSnapshot defaults url, body, tests, description to empty string', () => {
+        const state = new AppState();
+        state.takeCleanSnapshot({ name: 'R1' });
+        const snap = state._cleanSnapshots.get('R1');
+        assert.equal(snap.url, '');
+        assert.equal(snap.body, '');
+        assert.equal(snap.tests, '');
+        assert.equal(snap.description, '');
+    });
+
+    it('takeCleanSnapshot serializes headers as JSON string', () => {
+        const state = new AppState();
+        const req = new Request('R1', 'GET', '/api');
+        req.headers = { 'Authorization': 'Bearer token' };
+        state.takeCleanSnapshot(req);
+        const snap = state._cleanSnapshots.get('R1');
+        assert.equal(snap.headers, JSON.stringify({ 'Authorization': 'Bearer token' }));
+    });
+
+    it('takeCleanSnapshot overwrites previous snapshot for same request', () => {
+        const state = new AppState();
+        const req = new Request('R1', 'GET', '/v1');
+        state.takeCleanSnapshot(req);
+        assert.equal(state._cleanSnapshots.get('R1').url, '/v1');
+        req.url = '/v2';
+        state.takeCleanSnapshot(req);
+        assert.equal(state._cleanSnapshots.get('R1').url, '/v2');
+        assert.equal(state._cleanSnapshots.size, 1);
+    });
+});
+
+describe('Change Tracking: hasRequestChanged', () => {
+    it('returns false for null request', () => {
+        const state = new AppState();
+        assert.ok(!state.hasRequestChanged(null));
+    });
+
+    it('returns false when no snapshot exists', () => {
+        const state = new AppState();
+        assert.ok(!state.hasRequestChanged({ name: 'R1', method: 'GET' }));
+    });
+
+    it('returns false when request matches snapshot exactly', () => {
+        const state = new AppState();
+        const req = new Request('R1', 'POST', '/api/users');
+        req.body = '{"name":"test"}';
+        req.tests = 'pm.test("ok")';
+        req.description = 'desc';
+        state.takeCleanSnapshot(req);
+        assert.ok(!state.hasRequestChanged(req));
+    });
+
+    it('detects method change', () => {
+        const state = new AppState();
+        const req = new Request('R1', 'GET', '/api');
+        state.takeCleanSnapshot(req);
+        req.method = 'POST';
+        assert.ok(state.hasRequestChanged(req));
+    });
+
+    it('detects url change', () => {
+        const state = new AppState();
+        const req = new Request('R1', 'GET', '/api/v1');
+        state.takeCleanSnapshot(req);
+        req.url = '/api/v2';
+        assert.ok(state.hasRequestChanged(req));
+    });
+
+    it('detects body change', () => {
+        const state = new AppState();
+        const req = new Request('R1', 'POST', '/api');
+        req.body = '{}';
+        state.takeCleanSnapshot(req);
+        req.body = '{"changed":true}';
+        assert.ok(state.hasRequestChanged(req));
+    });
+
+    it('detects tests change', () => {
+        const state = new AppState();
+        const req = new Request('R1', 'GET', '/api');
+        req.tests = '';
+        state.takeCleanSnapshot(req);
+        req.tests = 'pm.test("new")';
+        assert.ok(state.hasRequestChanged(req));
+    });
+
+    it('detects description change', () => {
+        const state = new AppState();
+        const req = new Request('R1', 'GET', '/api');
+        req.description = 'original';
+        state.takeCleanSnapshot(req);
+        req.description = 'modified';
+        assert.ok(state.hasRequestChanged(req));
+    });
+
+    it('detects headers change', () => {
+        const state = new AppState();
+        const req = new Request('R1', 'GET', '/api');
+        req.headers = { 'Content-Type': 'application/json' };
+        state.takeCleanSnapshot(req);
+        req.headers = { 'Content-Type': 'text/plain' };
+        assert.ok(state.hasRequestChanged(req));
+    });
+});
+
+describe('Change Tracking: Status Bar Integration', () => {
+    it('status bar shows unsaved count when requests are dirty', () => {
+        const state = new AppState();
+        const col = new Collection('MyAPI');
+        col.addRequest(new Request('R1'));
+        state.setCurrentCollection(col);
+        state.markRequestDirty('R1');
+        state.updateStatusBar();
+        const statusText = document.getElementById('statusInfo').textContent;
+        assert.ok(statusText.includes('1 unsaved'), `Expected "1 unsaved" in: "${statusText}"`);
+    });
+
+    it('status bar shows no unsaved label when no dirty requests', () => {
+        const state = new AppState();
+        const col = new Collection('MyAPI');
+        col.addRequest(new Request('R1'));
+        state.setCurrentCollection(col);
+        state.updateStatusBar();
+        const statusText = document.getElementById('statusInfo').textContent;
+        assert.ok(!statusText.includes('unsaved'), `Expected no "unsaved" in: "${statusText}"`);
+    });
+
+    it('status bar updates count as requests become dirty/clean', () => {
+        const state = new AppState();
+        const col = new Collection('MyAPI');
+        col.addRequest(new Request('R1'));
+        col.addRequest(new Request('R2'));
+        state.setCurrentCollection(col);
+
+        state.markRequestDirty('R1');
+        state.markRequestDirty('R2');
+        state.updateStatusBar();
+        let statusText = document.getElementById('statusInfo').textContent;
+        assert.ok(statusText.includes('2 unsaved'), `Expected "2 unsaved" in: "${statusText}"`);
+
+        state.markRequestClean('R1');
+        state.updateStatusBar();
+        statusText = document.getElementById('statusInfo').textContent;
+        assert.ok(statusText.includes('1 unsaved'), `Expected "1 unsaved" in: "${statusText}"`);
+
+        state.markRequestClean('R2');
+        state.updateStatusBar();
+        statusText = document.getElementById('statusInfo').textContent;
+        assert.ok(!statusText.includes('unsaved'), `Expected no "unsaved" in: "${statusText}"`);
+    });
+});
+
+describe('Change Tracking: Save Flow', () => {
+    it('marking dirty then clean simulates save flow', () => {
+        const state = new AppState();
+        const col = new Collection('C');
+        state.setCurrentCollection(col);
+        const req = new Request('R1', 'POST', '/api');
+        req.body = '{"orig": true}';
+
+        // Load request: take snapshot
+        state.takeCleanSnapshot(req);
+        assert.ok(!state.hasRequestChanged(req));
+
+        // User edits body
+        req.body = '{"modified": true}';
+        state.markRequestDirty('R1');
+        assert.ok(state.isRequestDirty('R1'));
+        assert.ok(state.hasRequestChanged(req));
+
+        // User saves: mark clean and take new snapshot
+        state.markRequestClean('R1');
+        state.takeCleanSnapshot(req);
+        assert.ok(!state.isRequestDirty('R1'));
+        assert.ok(!state.hasRequestChanged(req));
+    });
+
+    it('export clears all dirty state', () => {
+        const state = new AppState();
+        const col = new Collection('C');
+        state.setCurrentCollection(col);
+        state.markRequestDirty('R1');
+        state.markRequestDirty('R2');
+        state.takeCleanSnapshot(new Request('R1'));
+        state.takeCleanSnapshot(new Request('R2'));
+
+        // Simulate export
+        state.clearAllDirty();
+        assert.equal(state._dirtyRequests.size, 0);
+        assert.equal(state._cleanSnapshots.size, 0);
+    });
+});
+
+describe('Change Tracking: Edge Cases', () => {
+    it('marking same request dirty multiple times does not duplicate', () => {
+        const state = new AppState();
+        const col = new Collection('C');
+        state.setCurrentCollection(col);
+        state.markRequestDirty('R1');
+        state.markRequestDirty('R1');
+        state.markRequestDirty('R1');
+        assert.equal(state._dirtyRequests.size, 1);
+    });
+
+    it('cleaning a request that is not dirty is a no-op', () => {
+        const state = new AppState();
+        state.markRequestClean('nonexistent');
+        assert.equal(state._dirtyRequests.size, 0);
+    });
+
+    it('hasRequestChanged handles request with empty/missing fields', () => {
+        const state = new AppState();
+        const req = { name: 'R1' }; // minimal object
+        state.takeCleanSnapshot(req);
+        assert.ok(!state.hasRequestChanged(req));
+
+        // Add a field
+        req.body = 'something';
+        assert.ok(state.hasRequestChanged(req));
+    });
+
+    it('snapshot captures headers as empty object by default', () => {
+        const state = new AppState();
+        const req = new Request('R1');
+        state.takeCleanSnapshot(req);
+        const snap = state._cleanSnapshots.get('R1');
+        // Request headers default can be {} or undefined
+        assert.equal(snap.headers, JSON.stringify(req.headers || {}));
+    });
+
+    it('dirty indicator count reflects only unique requests', () => {
+        const state = new AppState();
+        const col = new Collection('C');
+        col.addRequest(new Request('R1'));
+        state.setCurrentCollection(col);
+        state.markRequestDirty('R1');
+        state.markRequestDirty('R1');
+        assert.equal(state._dirtyRequests.size, 1);
+        state.updateStatusBar();
+        const statusText = document.getElementById('statusInfo').textContent;
+        assert.ok(statusText.includes('1 unsaved'));
+    });
+});

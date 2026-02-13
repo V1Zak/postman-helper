@@ -1022,6 +1022,9 @@ class AppState {
         this.filters = { text: '', methods: [], hasTests: false, hasBody: false, useRegex: false };
         this.environments = [];
         this.activeEnvironment = null;
+        // Per-request dirty tracking
+        this._dirtyRequests = new Set();
+        this._cleanSnapshots = new Map();
         // Initialize inheritance manager with proper fallback
         if (typeof InheritanceManager === 'function') {
             this.inheritanceManager = new InheritanceManager();
@@ -1095,11 +1098,57 @@ class AppState {
         const statusInfo = document.getElementById('statusInfo');
         if (this.currentCollection) {
             const changeIndicator = this.unsavedChanges ? '• ' : '';
+            const dirtyCount = this._dirtyRequests.size;
+            const dirtyLabel = dirtyCount > 0 ? ` | ${dirtyCount} unsaved` : '';
             const colCount = this.collections.length > 1 ? ` (${this.collections.length} collections)` : '';
-            statusInfo.textContent = `${changeIndicator}${this.currentCollection.name} | ${this.currentCollection.requests.length} requests, ${this.currentCollection.folders.length} folders${colCount}`;
+            statusInfo.textContent = `${changeIndicator}${this.currentCollection.name} | ${this.currentCollection.requests.length} requests, ${this.currentCollection.folders.length} folders${colCount}${dirtyLabel}`;
         } else {
             statusInfo.textContent = 'No collection loaded';
         }
+    }
+
+    markRequestDirty(requestName) {
+        if (!requestName) return;
+        this._dirtyRequests.add(requestName);
+        this.markAsChanged();
+    }
+
+    markRequestClean(requestName) {
+        if (!requestName) return;
+        this._dirtyRequests.delete(requestName);
+    }
+
+    isRequestDirty(requestName) {
+        return this._dirtyRequests.has(requestName);
+    }
+
+    clearAllDirty() {
+        this._dirtyRequests.clear();
+        this._cleanSnapshots.clear();
+    }
+
+    takeCleanSnapshot(request) {
+        if (!request || !request.name) return;
+        this._cleanSnapshots.set(request.name, {
+            method: request.method || 'GET',
+            url: request.url || '',
+            headers: JSON.stringify(request.headers || {}),
+            body: request.body || '',
+            tests: request.tests || '',
+            description: request.description || ''
+        });
+    }
+
+    hasRequestChanged(request) {
+        if (!request || !request.name) return false;
+        const snapshot = this._cleanSnapshots.get(request.name);
+        if (!snapshot) return false;
+        return (request.method || 'GET') !== snapshot.method
+            || (request.url || '') !== snapshot.url
+            || JSON.stringify(request.headers || {}) !== snapshot.headers
+            || (request.body || '') !== snapshot.body
+            || (request.tests || '') !== snapshot.tests
+            || (request.description || '') !== snapshot.description;
     }
 }
 
@@ -1114,7 +1163,7 @@ class PostmanHelperApp {
         this.setupDragAndDrop();
         this.setupContextMenus();
         this.loadAutoSave();
-        // this.initChangeTracking(); // TODO: Implement change tracking feature
+        this.initChangeTracking();
         // Sample data loaded via Load Sample button or first-launch prompt
     }
 
@@ -1470,12 +1519,21 @@ class PostmanHelperApp {
         // Set up body toggle
         this.setupBodyToggle();
 
-        // Set up change listeners for auto-save indication
+        // Set up change listeners for auto-save indication and dirty tracking
         const inputs = requestTab.querySelectorAll('input, select, textarea');
         inputs.forEach(input => {
-            input.addEventListener('change', () => this.state.markAsChanged());
-            input.addEventListener('input', () => this.state.markAsChanged());
+            input.addEventListener('change', () => {
+                this.state.markAsChanged();
+                this.markCurrentRequestDirty();
+            });
+            input.addEventListener('input', () => {
+                this.state.markAsChanged();
+                this.markCurrentRequestDirty();
+            });
         });
+
+        // Take a clean snapshot when loading a request (for change tracking)
+        this.state.takeCleanSnapshot(this.state.currentRequest);
     }
 
     getBodyForDisplay() {
@@ -2123,7 +2181,8 @@ class PostmanHelperApp {
                         const displayName = filtering && f.text
                             ? this.highlightMatch(request.name, f.text, f.useRegex)
                             : this.escapeHtml(request.name);
-                        html += `<div class="tree-item ${reqActive}" data-type="request" data-id="${request.name}" data-collection-index="${index}" draggable="true"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span><span class="request-name">${displayName}</span></div>`;
+                        const dirtyDot = this.state.isRequestDirty(request.name) ? '<span class="dirty-indicator">●</span>' : '';
+                        html += `<div class="tree-item ${reqActive}" data-type="request" data-id="${request.name}" data-collection-index="${index}" draggable="true"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
                     }
                 }
             }
@@ -2189,7 +2248,8 @@ class PostmanHelperApp {
                 const displayName = filtering && f.text
                     ? this.highlightMatch(request.name, f.text, f.useRegex)
                     : this.escapeHtml(request.name);
-                html += `<div class="tree-item ${requestActive}" data-type="request" data-id="${request.name}" draggable="true"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span><span class="request-name">${displayName}</span></div>`;
+                const dirtyDot = this.state.isRequestDirty(request.name) ? '<span class="dirty-indicator">●</span>' : '';
+                html += `<div class="tree-item ${requestActive}" data-type="request" data-id="${request.name}" draggable="true"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
             }
         }
 
@@ -2317,10 +2377,28 @@ class PostmanHelperApp {
                 }
 
                 if (request) {
-                    this.state.setCurrentRequest(request);
-                    this.state.setCurrentFolder(null);
-                    this.updateTabContent();
-                    this.switchTab('request');
+                    const current = this.state.currentRequest;
+                    const switchToRequest = () => {
+                        this.state.setCurrentRequest(request);
+                        this.state.setCurrentFolder(null);
+                        this.updateTabContent();
+                        this.switchTab('request');
+                    };
+
+                    // Warn if switching away from a dirty request
+                    if (current && current !== request && this.state.isRequestDirty(current.name)) {
+                        DialogSystem.showConfirm(
+                            `"${current.name}" has unsaved changes. Switch anyway?`,
+                            (confirmed) => {
+                                if (confirmed) {
+                                    this.state.markRequestClean(current.name);
+                                    switchToRequest();
+                                }
+                            }
+                        );
+                    } else {
+                        switchToRequest();
+                    }
                 }
             });
         });
@@ -2446,6 +2524,50 @@ class PostmanHelperApp {
         return null;
     }
 
+    // Change Tracking Helpers
+    markCurrentRequestDirty() {
+        const req = this.state.currentRequest;
+        if (!req) return;
+        this.state.markRequestDirty(req.name);
+        this.updateDirtyIndicators();
+    }
+
+    updateDirtyIndicators() {
+        // Update request tab label
+        const requestTabBtn = document.querySelector('.tab[data-tab="request"]');
+        if (requestTabBtn) {
+            const isDirty = this.state.currentRequest &&
+                this.state.isRequestDirty(this.state.currentRequest.name);
+            requestTabBtn.textContent = isDirty ? '● Request' : 'Request';
+        }
+
+        // Update dirty dots in tree (lightweight — just toggle existing spans)
+        document.querySelectorAll('.tree-item[data-type="request"]').forEach(item => {
+            const reqName = item.dataset.id;
+            const nameSpan = item.querySelector('.request-name');
+            if (!nameSpan) return;
+            const existingDot = item.querySelector('.dirty-indicator');
+            if (this.state.isRequestDirty(reqName)) {
+                if (!existingDot) {
+                    const dot = document.createElement('span');
+                    dot.className = 'dirty-indicator';
+                    dot.textContent = '●';
+                    nameSpan.parentNode.insertBefore(dot, nameSpan);
+                }
+            } else {
+                if (existingDot) existingDot.remove();
+            }
+        });
+
+        // Update status bar dirty count
+        this.state.updateStatusBar();
+    }
+
+    initChangeTracking() {
+        // Change tracking is initialized per-request in updateRequestTab()
+        // This method exists as the entry point called from the constructor
+    }
+
     // Request Management
     saveRequest() {
         if (!this.state.currentRequest || !this.state.currentCollection) return;
@@ -2480,6 +2602,10 @@ class PostmanHelperApp {
         // not when saving the definition.
 
         this.state.markAsChanged();
+
+        // Mark request clean and take a fresh snapshot after save
+        this.state.markRequestClean(name);
+        this.state.takeCleanSnapshot(this.state.currentRequest);
         
         // Update UI to reflect changes
         this.updateCollectionTree();
@@ -2494,6 +2620,7 @@ class PostmanHelperApp {
         
         // Update all tabs to show the latest data
         this.updateTabContent();
+        this.updateDirtyIndicators();
         
         alert('Request saved successfully!');
     }
@@ -2578,6 +2705,12 @@ class PostmanHelperApp {
         const tests = document.getElementById('requestTests').value;
         this.state.currentRequest.tests = tests;
         this.state.markAsChanged();
+
+        // Mark request clean and take fresh snapshot after saving tests
+        this.state.markRequestClean(this.state.currentRequest.name);
+        this.state.takeCleanSnapshot(this.state.currentRequest);
+        this.updateDirtyIndicators();
+
         alert('Tests saved successfully!');
     }
 
@@ -2898,7 +3031,9 @@ class PostmanHelperApp {
 
             if (result.success) {
                 this.state.unsavedChanges = false;
+                this.state.clearAllDirty();
                 this.state.updateStatusBar();
+                this.updateDirtyIndicators();
                 alert(`Collection exported successfully to: ${result.path}`);
             }
         } catch (error) {
