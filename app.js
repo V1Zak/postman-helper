@@ -1121,6 +1121,461 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = Object.assign(module.exports || {}, { DiffUtil });
 }
 
+// FormatParser — multi-format import/export for Swagger, OpenAPI, HAR, cURL
+class FormatParser {
+    /**
+     * Detect the format of a file's content.
+     * @param {string} content - Raw file content
+     * @param {string} [filePath] - Optional file path for extension hinting
+     * @returns {'openapi-3'|'swagger-2'|'har'|'curl'|'postman-v2.1'|'insomnia'|'simple'|'unknown'}
+     */
+    static detectFormat(content, filePath) {
+        if (!content || typeof content !== 'string') return 'unknown';
+        const trimmed = content.trim();
+
+        // cURL detection (starts with "curl " — plain text, not JSON)
+        if (trimmed.startsWith('curl ') || trimmed.startsWith('curl.exe ')) {
+            return 'curl';
+        }
+
+        // Try to parse as JSON
+        let obj;
+        try {
+            obj = JSON.parse(trimmed);
+        } catch {
+            // Not valid JSON — check for YAML indicators
+            if (trimmed.match(/^(openapi|swagger)\s*:/m)) {
+                return trimmed.match(/^openapi\s*:\s*['"]?3/m) ? 'openapi-3' : 'swagger-2';
+            }
+            // Could be multi-line cURL
+            if (trimmed.match(/^curl\s/m)) return 'curl';
+            return 'unknown';
+        }
+
+        // JSON-based format detection
+        if (obj.openapi && String(obj.openapi).startsWith('3')) return 'openapi-3';
+        if (obj.swagger && String(obj.swagger).startsWith('2')) return 'swagger-2';
+        if (obj.log && obj.log.entries) return 'har';
+        if (obj.info && obj.info.schema && obj.info.schema.includes('getpostman.com')) return 'postman-v2.1';
+        if (obj.info) return 'postman-v2.1'; // Postman without explicit schema
+        if (obj._type === 'export' && obj.resources) return 'insomnia';
+        if (obj.requests || obj.name) return 'simple';
+
+        return 'unknown';
+    }
+
+    /**
+     * Parse OpenAPI 3.x JSON into a simple collection format.
+     * @param {object} spec - Parsed OpenAPI 3.x object
+     * @returns {{ name: string, description: string, requests: Array, folders: Array }}
+     */
+    static parseOpenAPI3(spec) {
+        const info = spec.info || {};
+        const name = info.title || 'OpenAPI Import';
+        const description = info.description || '';
+        const servers = spec.servers || [];
+        const baseUrl = servers.length > 0 ? servers[0].url : '';
+        const folders = [];
+        const rootRequests = [];
+
+        // Group by tags; untagged go to root
+        const tagMap = new Map();
+
+        for (const [path, pathItem] of Object.entries(spec.paths || {})) {
+            const methods = ['get', 'post', 'put', 'delete', 'patch', 'head', 'options'];
+            for (const method of methods) {
+                const operation = pathItem[method];
+                if (!operation) continue;
+
+                const reqName = operation.summary || operation.operationId || `${method.toUpperCase()} ${path}`;
+                const reqDescription = operation.description || '';
+                const headers = {};
+
+                // Extract header parameters
+                const params = (operation.parameters || []).concat(pathItem.parameters || []);
+                for (const param of params) {
+                    if (param.in === 'header') {
+                        headers[param.name] = param.example || param.schema?.default || '';
+                    }
+                }
+
+                // Extract request body
+                let body = '';
+                if (operation.requestBody) {
+                    const content = operation.requestBody.content || {};
+                    const jsonContent = content['application/json'];
+                    if (jsonContent && jsonContent.example) {
+                        body = typeof jsonContent.example === 'string'
+                            ? jsonContent.example
+                            : JSON.stringify(jsonContent.example, null, 2);
+                    } else if (jsonContent && jsonContent.schema && jsonContent.schema.example) {
+                        body = JSON.stringify(jsonContent.schema.example, null, 2);
+                    }
+                    if (jsonContent && !headers['Content-Type']) {
+                        headers['Content-Type'] = 'application/json';
+                    }
+                }
+
+                const request = {
+                    name: reqName,
+                    method: method.toUpperCase(),
+                    url: baseUrl + path,
+                    headers: headers,
+                    body: body,
+                    description: reqDescription
+                };
+
+                const tags = operation.tags || [];
+                if (tags.length > 0) {
+                    const tag = tags[0];
+                    if (!tagMap.has(tag)) tagMap.set(tag, []);
+                    tagMap.get(tag).push(request);
+                } else {
+                    rootRequests.push(request);
+                }
+            }
+        }
+
+        // Convert tag groups to folders
+        for (const [tagName, requests] of tagMap) {
+            const tagDef = (spec.tags || []).find(t => t.name === tagName);
+            folders.push({
+                name: tagName,
+                description: tagDef ? tagDef.description : '',
+                requests: requests,
+                folders: []
+            });
+        }
+
+        return { name, description, requests: rootRequests, folders };
+    }
+
+    /**
+     * Parse Swagger 2.0 JSON into a simple collection format.
+     * @param {object} spec - Parsed Swagger 2.0 object
+     * @returns {{ name: string, description: string, requests: Array, folders: Array }}
+     */
+    static parseSwagger2(spec) {
+        const info = spec.info || {};
+        const name = info.title || 'Swagger Import';
+        const description = info.description || '';
+        const scheme = (spec.schemes || ['https'])[0];
+        const host = spec.host || 'localhost';
+        const basePath = spec.basePath || '';
+        const baseUrl = `${scheme}://${host}${basePath}`;
+        const folders = [];
+        const rootRequests = [];
+        const tagMap = new Map();
+
+        for (const [path, pathItem] of Object.entries(spec.paths || {})) {
+            const methods = ['get', 'post', 'put', 'delete', 'patch', 'head', 'options'];
+            for (const method of methods) {
+                const operation = pathItem[method];
+                if (!operation) continue;
+
+                const reqName = operation.summary || operation.operationId || `${method.toUpperCase()} ${path}`;
+                const headers = {};
+                let body = '';
+
+                // Extract parameters
+                const params = (operation.parameters || []).concat(pathItem.parameters || []);
+                for (const param of params) {
+                    if (param.in === 'header') {
+                        headers[param.name] = param.default || '';
+                    } else if (param.in === 'body' && param.schema) {
+                        if (param.schema.example) {
+                            body = JSON.stringify(param.schema.example, null, 2);
+                        }
+                    }
+                }
+
+                // Content-Type from consumes
+                const consumes = operation.consumes || spec.consumes || [];
+                if (consumes.includes('application/json') && !headers['Content-Type']) {
+                    headers['Content-Type'] = 'application/json';
+                }
+
+                const request = {
+                    name: reqName,
+                    method: method.toUpperCase(),
+                    url: baseUrl + path,
+                    headers: headers,
+                    body: body,
+                    description: operation.description || ''
+                };
+
+                const tags = operation.tags || [];
+                if (tags.length > 0) {
+                    const tag = tags[0];
+                    if (!tagMap.has(tag)) tagMap.set(tag, []);
+                    tagMap.get(tag).push(request);
+                } else {
+                    rootRequests.push(request);
+                }
+            }
+        }
+
+        for (const [tagName, requests] of tagMap) {
+            folders.push({ name: tagName, requests, folders: [] });
+        }
+
+        return { name, description, requests: rootRequests, folders };
+    }
+
+    /**
+     * Parse HAR 1.2 JSON into a simple collection format.
+     * @param {object} har - Parsed HAR object
+     * @returns {{ name: string, description: string, requests: Array, folders: Array }}
+     */
+    static parseHAR(har) {
+        const log = har.log || {};
+        const entries = log.entries || [];
+        const name = `HAR Import (${entries.length} requests)`;
+        const requests = [];
+
+        for (const entry of entries) {
+            const req = entry.request || {};
+            const headers = {};
+            for (const h of (req.headers || [])) {
+                // Skip pseudo-headers and cookie headers
+                if (h.name.startsWith(':') || h.name.toLowerCase() === 'cookie') continue;
+                headers[h.name] = h.value;
+            }
+
+            let body = '';
+            if (req.postData) {
+                body = req.postData.text || '';
+            }
+
+            // Parse URL to get a readable name
+            let urlName;
+            try {
+                const parsed = new URL(req.url);
+                urlName = `${req.method} ${parsed.pathname}`;
+            } catch {
+                urlName = `${req.method || 'GET'} ${req.url || '/'}`;
+            }
+
+            requests.push({
+                name: urlName,
+                method: req.method || 'GET',
+                url: req.url || '',
+                headers: headers,
+                body: body,
+                description: ''
+            });
+        }
+
+        return { name, description: 'Imported from HAR file', requests, folders: [] };
+    }
+
+    /**
+     * Parse a cURL command string into a single request.
+     * Supports: -X METHOD, -H "Header: Value", -d 'body', --data, --data-raw, --data-binary, URL
+     * @param {string} curlStr - cURL command string
+     * @returns {{ name: string, description: string, requests: Array, folders: Array }}
+     */
+    static parseCurl(curlStr) {
+        if (!curlStr || typeof curlStr !== 'string') {
+            return { name: 'cURL Import', description: '', requests: [], folders: [] };
+        }
+
+        // Normalize: join backslash-continued lines, trim
+        const normalized = curlStr.replace(/\\\s*\n/g, ' ').trim();
+
+        let method = 'GET';
+        let url = '';
+        const headers = {};
+        let body = '';
+
+        // Tokenize respecting quoted strings
+        const tokens = FormatParser._tokenize(normalized);
+
+        let i = 0;
+        while (i < tokens.length) {
+            const token = tokens[i];
+            if (token === 'curl' || token === 'curl.exe') {
+                i++;
+                continue;
+            }
+            if (token === '-X' || token === '--request') {
+                i++;
+                if (i < tokens.length) method = tokens[i].toUpperCase();
+            } else if (token === '-H' || token === '--header') {
+                i++;
+                if (i < tokens.length) {
+                    const colonIdx = tokens[i].indexOf(':');
+                    if (colonIdx > 0) {
+                        const key = tokens[i].substring(0, colonIdx).trim();
+                        const value = tokens[i].substring(colonIdx + 1).trim();
+                        headers[key] = value;
+                    }
+                }
+            } else if (token === '-d' || token === '--data' || token === '--data-raw' || token === '--data-binary') {
+                i++;
+                if (i < tokens.length) {
+                    body = tokens[i];
+                    if (method === 'GET') method = 'POST'; // cURL defaults to POST with data
+                }
+            } else if (token === '--compressed' || token === '-s' || token === '--silent'
+                || token === '-k' || token === '--insecure' || token === '-v' || token === '--verbose'
+                || token === '-L' || token === '--location' || token === '-i' || token === '--include') {
+                // Skip known flags without arguments
+            } else if (token === '-u' || token === '--user') {
+                i++; // Skip basic auth value
+            } else if (token === '-o' || token === '--output' || token === '-A' || token === '--user-agent') {
+                i++; // Skip flags with arguments
+            } else if (!token.startsWith('-')) {
+                // Assume it's the URL
+                url = token;
+            }
+            i++;
+        }
+
+        let reqName;
+        try {
+            const parsed = new URL(url);
+            reqName = `${method} ${parsed.pathname}`;
+        } catch {
+            reqName = `${method} ${url || '/'}`;
+        }
+
+        const requests = [{
+            name: reqName,
+            method,
+            url,
+            headers,
+            body,
+            description: 'Imported from cURL'
+        }];
+
+        return { name: 'cURL Import', description: '', requests, folders: [] };
+    }
+
+    /**
+     * Tokenize a shell command respecting single and double quotes.
+     * @param {string} str - Shell command string
+     * @returns {string[]} Tokens
+     */
+    static _tokenize(str) {
+        const tokens = [];
+        let current = '';
+        let inSingle = false;
+        let inDouble = false;
+        let escaped = false;
+
+        for (let i = 0; i < str.length; i++) {
+            const ch = str[i];
+            if (escaped) {
+                current += ch;
+                escaped = false;
+                continue;
+            }
+            if (ch === '\\' && !inSingle) {
+                escaped = true;
+                continue;
+            }
+            if (ch === "'" && !inDouble) {
+                inSingle = !inSingle;
+                continue;
+            }
+            if (ch === '"' && !inSingle) {
+                inDouble = !inDouble;
+                continue;
+            }
+            if ((ch === ' ' || ch === '\t') && !inSingle && !inDouble) {
+                if (current.length > 0) {
+                    tokens.push(current);
+                    current = '';
+                }
+                continue;
+            }
+            current += ch;
+        }
+        if (current.length > 0) tokens.push(current);
+        return tokens;
+    }
+
+    /**
+     * Export a single request as a cURL command string.
+     * @param {object} request - Request object with method, url, headers, body
+     * @param {string} [baseUrl] - Optional base URL to prepend
+     * @returns {string} cURL command
+     */
+    static toCurl(request, baseUrl) {
+        const method = (request.method || 'GET').toUpperCase();
+        const url = (baseUrl || '') + (request.url || '');
+        let cmd = `curl -X ${method}`;
+
+        // Headers
+        const headers = request.headers || {};
+        if (typeof headers === 'object' && !Array.isArray(headers)) {
+            for (const [key, value] of Object.entries(headers)) {
+                cmd += ` \\\n  -H '${key}: ${value}'`;
+            }
+        } else if (Array.isArray(headers)) {
+            for (const h of headers) {
+                if (h.key) cmd += ` \\\n  -H '${h.key}: ${h.value || ''}'`;
+            }
+        }
+
+        // Body
+        const body = request.body || '';
+        if (body) {
+            const escaped = body.replace(/'/g, "'\\''");
+            cmd += ` \\\n  -d '${escaped}'`;
+        }
+
+        cmd += ` \\\n  '${url}'`;
+        return cmd;
+    }
+
+    /**
+     * Convert a parsed collection format to the internal simple format
+     * and import it into an existing Collection object.
+     * @param {Collection} collection - Target collection
+     * @param {{ name, description, requests, folders }} parsed - Parsed data
+     */
+    static importParsedInto(collection, parsed) {
+        collection.name = parsed.name || collection.name;
+        collection.description = parsed.description || '';
+
+        for (const reqData of (parsed.requests || [])) {
+            const req = new Request(
+                reqData.name,
+                reqData.method,
+                reqData.url,
+                reqData.headers || {},
+                reqData.body || '',
+                reqData.description || ''
+            );
+            if (reqData.tests) req.tests = reqData.tests;
+            collection.addRequest(req);
+        }
+
+        for (const folderData of (parsed.folders || [])) {
+            const folder = new Folder(folderData.name);
+            for (const reqData of (folderData.requests || [])) {
+                const req = new Request(
+                    reqData.name,
+                    reqData.method,
+                    reqData.url,
+                    reqData.headers || {},
+                    reqData.body || '',
+                    reqData.description || ''
+                );
+                if (reqData.tests) req.tests = reqData.tests;
+                folder.addRequest(req);
+            }
+            collection.addFolder(folder);
+        }
+    }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Object.assign(module.exports || {}, { FormatParser });
+}
+
 // AppState class - manages application state
 class AppState {
     constructor() {
@@ -1618,6 +2073,7 @@ class PostmanHelperApp {
                 <button id="deleteRequestBtn" class="secondary">Delete Request</button>
                 <button id="duplicateRequestBtn" class="secondary">Duplicate</button>
                 <button id="showHistoryBtn" class="secondary" title="View version history">History</button>
+                <button id="copyAsCurlBtn" class="secondary" title="Copy request as cURL command">Copy as cURL</button>
             </div>
         `;
 
@@ -1626,6 +2082,7 @@ class PostmanHelperApp {
         document.getElementById('deleteRequestBtn').addEventListener('click', () => this.deleteRequest());
         document.getElementById('duplicateRequestBtn').addEventListener('click', () => this.duplicateRequest());
         document.getElementById('showHistoryBtn').addEventListener('click', () => this.showHistory());
+        document.getElementById('copyAsCurlBtn').addEventListener('click', () => this.copyRequestAsCurl());
         document.getElementById('addRequestHeaderBtn').addEventListener('click', () => this.addRequestHeader());
 
         // Set up Send button
@@ -3128,19 +3585,62 @@ class PostmanHelperApp {
     async importCollection() {
         try {
             const result = await window.electronAPI.openFile({
-                filters: [{ name: 'JSON Files', extensions: ['json'] }]
+                filters: [
+                    { name: 'All Supported', extensions: ['json', 'yaml', 'yml', 'har', 'txt'] },
+                    { name: 'JSON Files', extensions: ['json'] },
+                    { name: 'YAML Files', extensions: ['yaml', 'yml'] },
+                    { name: 'HAR Files', extensions: ['har'] },
+                    { name: 'cURL/Text', extensions: ['txt'] },
+                    { name: 'All Files', extensions: ['*'] }
+                ]
             });
 
             if (result.success) {
                 const collection = new Collection('Imported Collection');
-                collection.importFromJSON(result.content);
+                const format = FormatParser.detectFormat(result.content, result.path);
+
+                switch (format) {
+                    case 'openapi-3': {
+                        const spec = JSON.parse(result.content);
+                        const parsed = FormatParser.parseOpenAPI3(spec);
+                        FormatParser.importParsedInto(collection, parsed);
+                        this.showToast(`Imported OpenAPI 3.x: ${parsed.name}`, 2000, 'success');
+                        break;
+                    }
+                    case 'swagger-2': {
+                        const spec = JSON.parse(result.content);
+                        const parsed = FormatParser.parseSwagger2(spec);
+                        FormatParser.importParsedInto(collection, parsed);
+                        this.showToast(`Imported Swagger 2.0: ${parsed.name}`, 2000, 'success');
+                        break;
+                    }
+                    case 'har': {
+                        const har = JSON.parse(result.content);
+                        const parsed = FormatParser.parseHAR(har);
+                        FormatParser.importParsedInto(collection, parsed);
+                        this.showToast(`Imported HAR: ${parsed.requests.length} requests`, 2000, 'success');
+                        break;
+                    }
+                    case 'curl': {
+                        const parsed = FormatParser.parseCurl(result.content);
+                        FormatParser.importParsedInto(collection, parsed);
+                        this.showToast('Imported cURL request', 2000, 'success');
+                        break;
+                    }
+                    default: {
+                        // Postman v2.1 or simple format — existing path
+                        collection.importFromJSON(result.content);
+                        this.showToast('Collection imported successfully!', 2000, 'success');
+                        break;
+                    }
+                }
+
                 this.state.addCollection(collection);
                 this.state.currentCollection = collection;
                 this.state.currentRequest = null;
                 this.state.currentFolder = null;
                 this.updateCollectionTree();
                 this.switchTab('request');
-                alert('Collection imported successfully!');
             }
         } catch (error) {
             console.error('Import error:', error);
@@ -3604,6 +4104,7 @@ class PostmanHelperApp {
                 items = [
                     { label: 'Rename', action: () => this.renameRequest(request) },
                     { label: 'Duplicate', action: () => this.duplicateRequestDirect(request) },
+                    { label: 'Copy as cURL', action: () => this.copyRequestAsCurl(request) },
                     { label: 'Move to Folder', action: () => this.moveRequestToFolder(request) },
                     { divider: true },
                     { label: 'Delete', danger: true, action: () => this.deleteRequestDirect(request) }
@@ -3808,6 +4309,34 @@ class PostmanHelperApp {
                 this.updateCollectionTree();
             }
         });
+    }
+
+    copyRequestAsCurl(request) {
+        const req = request || this.state.currentRequest;
+        if (!req) {
+            this.showToast('No request selected');
+            return;
+        }
+        try {
+            const curl = FormatParser.toCurl(req);
+            if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                navigator.clipboard.writeText(curl).then(() => {
+                    this.showToast('cURL command copied to clipboard', 2000, 'success');
+                }).catch(() => {
+                    this._showCurlFallback(curl);
+                });
+            } else {
+                this._showCurlFallback(curl);
+            }
+        } catch (err) {
+            console.error('Failed to generate cURL:', err);
+            this.showToast('Failed to generate cURL command');
+        }
+    }
+
+    _showCurlFallback(curl) {
+        // Fallback: show in a prompt dialog so user can copy
+        DialogSystem.showPrompt('cURL command (select all & copy):', curl, () => {});
     }
 
     moveRequestToFolder(request) {
