@@ -35,6 +35,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readPluginManifest: (dir) => ipcRenderer.invoke('read-plugin-manifest', dir),
   loadPlugin: (dir, mainFile) => ipcRenderer.invoke('load-plugin', dir, mainFile),
 
+  // AI-powered suggestions
+  aiIsEnabled: () => ipcRenderer.invoke('ai-is-enabled'),
+  aiSuggestHeaders: (data) => ipcRenderer.invoke('ai-suggest-headers', data),
+  aiGenerateBody: (data) => ipcRenderer.invoke('ai-generate-body', data),
+  aiGenerateTests: (data) => ipcRenderer.invoke('ai-generate-tests', data),
+  aiAnalyzeError: (data) => ipcRenderer.invoke('ai-analyze-error', data),
+  aiSuggestUrl: (data) => ipcRenderer.invoke('ai-suggest-url', data),
+
   // Add more API methods as needed
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
   onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', callback)

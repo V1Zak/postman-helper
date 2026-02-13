@@ -623,6 +623,42 @@
             font-size: 13px;
         }
 
+        /* ===== AI Suggestion Buttons ===== */
+        .ai-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            padding: 4px 10px;
+            font-size: 11px;
+            cursor: pointer;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+            display: none;
+        }
+        .ai-btn:hover { opacity: 1; }
+        .ai-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .ai-btn.loading { opacity: 0.6; }
+        .ai-btn.loading::after { content: '...'; }
+        .ai-btn.visible { display: inline-block; }
+        .ai-analysis {
+            background: var(--bg-tertiary, var(--bg-secondary));
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 12px;
+            margin-top: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+        .ai-analysis-header {
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+
         .status-bar {
             background-color: var(--bg-secondary);
             padding: 8px 15px;
