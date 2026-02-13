@@ -241,3 +241,55 @@ ipcMain.handle('load-plugin', async (event, dir, mainFile) => {
     return { success: false, error: error.message }
   }
 })
+
+// ===== Feature 18: AI-Powered Suggestions =====
+const { AIService } = require('./ai')
+const aiService = new AIService({
+  chatApiKey: config.chatApiKey,
+  aiBaseUrl: process.env.AI_BASE_URL,
+  aiModel: process.env.AI_MODEL
+})
+
+ipcMain.handle('ai-is-enabled', async () => {
+  return { enabled: aiService.enabled }
+})
+
+ipcMain.handle('ai-suggest-headers', async (event, data) => {
+  try {
+    return await aiService.suggestHeaders(data)
+  } catch (error) {
+    return { suggestions: [], error: error.message }
+  }
+})
+
+ipcMain.handle('ai-generate-body', async (event, data) => {
+  try {
+    return await aiService.generateBody(data)
+  } catch (error) {
+    return { body: '', error: error.message }
+  }
+})
+
+ipcMain.handle('ai-generate-tests', async (event, data) => {
+  try {
+    return await aiService.generateTests(data)
+  } catch (error) {
+    return { tests: '', error: error.message }
+  }
+})
+
+ipcMain.handle('ai-analyze-error', async (event, data) => {
+  try {
+    return await aiService.analyzeError(data)
+  } catch (error) {
+    return { analysis: '', error: error.message }
+  }
+})
+
+ipcMain.handle('ai-suggest-url', async (event, data) => {
+  try {
+    return await aiService.suggestUrl(data)
+  } catch (error) {
+    return { suggestions: [], error: error.message }
+  }
+})
