@@ -2298,10 +2298,16 @@ class AppState {
         
         // Settings with default values
         this.autoSave = false;
-        this.darkMode = false;
+        this.darkMode = true;
         this.autoFormat = true;
         this.showLineNumbers = true;
         this.inheritGlobally = true;
+        this.defaultMethod = 'GET';
+        this.requestTimeout = 30;
+        this.editorFontSize = 13;
+        this.maxHistoryDepth = 20;
+        this.toastDuration = 2000;
+        this.confirmBeforeDelete = true;
         this.bodyViewMode = 'raw';
         this.filters = { text: '', methods: [], hasTests: false, hasBody: false, useRegex: false };
         this.environments = [];
@@ -2391,6 +2397,59 @@ class AppState {
         }
     }
 
+    static get SETTINGS_KEY() { return 'postman-helper-settings'; }
+
+    static get DEFAULT_SETTINGS() {
+        return {
+            autoSave: false,
+            darkMode: true,
+            autoFormat: true,
+            showLineNumbers: true,
+            inheritGlobally: true,
+            defaultMethod: 'GET',
+            requestTimeout: 30,
+            editorFontSize: 13,
+            maxHistoryDepth: 20,
+            toastDuration: 2000,
+            confirmBeforeDelete: true
+        };
+    }
+
+    loadSettings() {
+        try {
+            const raw = localStorage.getItem(AppState.SETTINGS_KEY);
+            if (raw) {
+                const saved = JSON.parse(raw);
+                const defaults = AppState.DEFAULT_SETTINGS;
+                for (const key of Object.keys(defaults)) {
+                    this[key] = saved[key] !== undefined ? saved[key] : defaults[key];
+                }
+            }
+        } catch (e) {
+            console.error('Failed to load settings from localStorage:', e);
+        }
+    }
+
+    saveSettings() {
+        try {
+            const settings = {};
+            for (const key of Object.keys(AppState.DEFAULT_SETTINGS)) {
+                settings[key] = this[key];
+            }
+            localStorage.setItem(AppState.SETTINGS_KEY, JSON.stringify(settings));
+        } catch (e) {
+            console.error('Failed to save settings to localStorage:', e);
+        }
+    }
+
+    resetSettings() {
+        const defaults = AppState.DEFAULT_SETTINGS;
+        for (const key of Object.keys(defaults)) {
+            this[key] = defaults[key];
+        }
+        this.saveSettings();
+    }
+
     markRequestDirty(requestName) {
         if (!requestName) return;
         this._dirtyRequests.add(requestName);
@@ -2440,6 +2499,7 @@ class AppState {
 class PostmanHelperApp {
     constructor() {
         this.state = new AppState();
+        this.state.loadSettings();
         this._autoSaveTimer = null;
         this.state._onChanged = () => this.triggerAutoSave();
         this.initUI();
@@ -2452,6 +2512,7 @@ class PostmanHelperApp {
         });
         this.loadAutoSave();
         this.initChangeTracking();
+        this.applySettingsToUI();
         // Show tutorial on first launch
         if (this.tutorial.shouldShow()) {
             setTimeout(() => this.tutorial.show(), 500);
@@ -2459,8 +2520,8 @@ class PostmanHelperApp {
     }
 
     initUI() {
-        // Apply default dark theme
-        this.applyTheme('dark');
+        // Apply theme from settings
+        this.applyTheme(this.state.darkMode ? 'dark' : 'light');
 
         // Initialize tab functionality
         document.querySelectorAll('.tab').forEach(tab => {
@@ -3575,15 +3636,16 @@ class PostmanHelperApp {
             return;
         }
 
+        const defaultMethod = this.state.defaultMethod || 'GET';
         DialogSystem.showPrompt('Enter request name:', 'New Request', (name) => {
             if (name) {
-                const request = new Request(name, 'GET', '/');
+                const request = new Request(name, defaultMethod, '/');
                 this.state.currentCollection.addRequest(request);
                 this.state.setCurrentRequest(request);
                 this.updateCollectionTree();
                 this.switchTab('request');
                 this.state.markAsChanged();
-                this.analytics.track('request_created', { name, method: 'GET' });
+                this.analytics.track('request_created', { name, method: defaultMethod });
             }
         });
     }
@@ -4038,6 +4100,10 @@ class PostmanHelperApp {
     saveRequest() {
         if (!this.state.currentRequest || !this.state.currentCollection) return;
 
+        // Sync max history depth from settings
+        if (this.state.currentRequest._maxHistoryDepth !== undefined) {
+            this.state.currentRequest._maxHistoryDepth = this.state.maxHistoryDepth;
+        }
         // Take a version history snapshot before overwriting fields
         if (this.state.currentRequest.takeSnapshot) {
             this.state.currentRequest.takeSnapshot();
@@ -4047,8 +4113,19 @@ class PostmanHelperApp {
         const name = document.getElementById('requestName').value;
         const method = document.getElementById('requestMethod').value;
         const url = document.getElementById('requestUrl').value;
-        const body = document.getElementById('requestBody').value;
+        let body = document.getElementById('requestBody').value;
         const description = document.getElementById('requestDescription').value;
+
+        // Auto-format JSON body if setting is enabled
+        if (this.state.autoFormat && body && body.trim()) {
+            try {
+                const parsed = JSON.parse(body);
+                const formatted = JSON.stringify(parsed, null, 2);
+                body = formatted;
+                const bodyEl = document.getElementById('requestBody');
+                if (bodyEl) bodyEl.value = formatted;
+            } catch (_) { /* not JSON, leave as-is */ }
+        }
 
         // 2. Capture headers
         const headers = {};
@@ -4100,18 +4177,24 @@ class PostmanHelperApp {
         if (!this.state.currentRequest || !this.state.currentCollection) return;
         const deleteName = this.state.currentRequest.name;
 
-        DialogSystem.showConfirm(`Are you sure you want to delete "${deleteName}"?`, (confirmDelete) => {
-            if (confirmDelete) {
-                this.state.currentCollection.requests = this.state.currentCollection.requests.filter(
-                    r => r !== this.state.currentRequest
-                );
-                this.state.setCurrentRequest(null);
-                this.updateCollectionTree();
-                this.switchTab('request');
-                this.state.markAsChanged();
-                this.analytics.track('request_deleted', { name: deleteName });
-            }
-        });
+        const doDelete = () => {
+            this.state.currentCollection.requests = this.state.currentCollection.requests.filter(
+                r => r !== this.state.currentRequest
+            );
+            this.state.setCurrentRequest(null);
+            this.updateCollectionTree();
+            this.switchTab('request');
+            this.state.markAsChanged();
+            this.analytics.track('request_deleted', { name: deleteName });
+        };
+
+        if (this.state.confirmBeforeDelete) {
+            DialogSystem.showConfirm(`Are you sure you want to delete "${deleteName}"?`, (confirmDelete) => {
+                if (confirmDelete) doDelete();
+            });
+        } else {
+            doDelete();
+        }
     }
 
     duplicateRequest() {
@@ -4612,6 +4695,10 @@ class PostmanHelperApp {
         const existingPanel = document.getElementById('settingsPanel');
         if (existingPanel) existingPanel.remove();
 
+        const s = this.state;
+        const methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+        const methodOptions = methods.map(m => `<option value="${m}" ${s.defaultMethod === m ? 'selected' : ''}>${m}</option>`).join('');
+
         // Create settings overlay (keeps settingsModal id for test compatibility)
         const settingsModal = document.createElement('div');
         settingsModal.id = 'settingsModal';
@@ -4628,64 +4715,112 @@ class PostmanHelperApp {
             </div>
             <div class="settings-body">
                 <div class="settings-group">
-                    <h4>General</h4>
-                    <div class="settings-item">
-                        <div>
-                            <div class="settings-item-label">Auto-save</div>
-                            <div class="settings-item-desc">Automatically save changes</div>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="autoSave" ${this.state.autoSave ? 'checked' : ''}>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
+                    <h4>Appearance</h4>
                     <div class="settings-item">
                         <div>
                             <div class="settings-item-label">Dark Mode</div>
                             <div class="settings-item-desc">Toggle dark/light theme</div>
                         </div>
                         <label class="toggle-switch">
-                            <input type="checkbox" id="darkMode" ${this.state.darkMode ? 'checked' : ''}>
+                            <input type="checkbox" id="darkMode" ${s.darkMode ? 'checked' : ''}>
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
                 </div>
+
                 <div class="settings-group">
                     <h4>Editor</h4>
                     <div class="settings-item">
                         <div>
                             <div class="settings-item-label">Auto-format JSON</div>
-                            <div class="settings-item-desc">Format JSON on paste/save</div>
+                            <div class="settings-item-desc">Format JSON body on save</div>
                         </div>
                         <label class="toggle-switch">
-                            <input type="checkbox" id="autoFormat" ${this.state.autoFormat ? 'checked' : ''}>
+                            <input type="checkbox" id="autoFormat" ${s.autoFormat ? 'checked' : ''}>
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
                     <div class="settings-item">
                         <div>
                             <div class="settings-item-label">Show Line Numbers</div>
-                            <div class="settings-item-desc">Display line numbers in editor</div>
+                            <div class="settings-item-desc">Display line numbers in text areas</div>
                         </div>
                         <label class="toggle-switch">
-                            <input type="checkbox" id="showLineNumbers" ${this.state.showLineNumbers ? 'checked' : ''}>
+                            <input type="checkbox" id="showLineNumbers" ${s.showLineNumbers ? 'checked' : ''}>
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Font Size</div>
+                            <div class="settings-item-desc">Editor font size (px)</div>
+                        </div>
+                        <input type="number" id="editorFontSize" value="${s.editorFontSize}" min="10" max="24" style="width:60px;text-align:center;">
+                    </div>
                 </div>
+
                 <div class="settings-group">
-                    <h4>Request</h4>
+                    <h4>Behavior</h4>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Auto-save</div>
+                            <div class="settings-item-desc">Automatically save changes to disk</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoSave" ${s.autoSave ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
                     <div class="settings-item">
                         <div>
                             <div class="settings-item-label">Inherit Global Headers</div>
                             <div class="settings-item-desc">Apply global headers to all requests</div>
                         </div>
                         <label class="toggle-switch">
-                            <input type="checkbox" id="inheritGlobally" ${this.state.inheritGlobally ? 'checked' : ''}>
+                            <input type="checkbox" id="inheritGlobally" ${s.inheritGlobally ? 'checked' : ''}>
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Confirm Before Delete</div>
+                            <div class="settings-item-desc">Ask confirmation before deleting requests</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="confirmBeforeDelete" ${s.confirmBeforeDelete ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Default Method</div>
+                            <div class="settings-item-desc">HTTP method for new requests</div>
+                        </div>
+                        <select id="defaultMethod" style="width:90px;">${methodOptions}</select>
+                    </div>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Request Timeout</div>
+                            <div class="settings-item-desc">Timeout in seconds</div>
+                        </div>
+                        <input type="number" id="requestTimeout" value="${s.requestTimeout}" min="1" max="300" style="width:60px;text-align:center;">
+                    </div>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Toast Duration</div>
+                            <div class="settings-item-desc">Notification display time (ms)</div>
+                        </div>
+                        <input type="number" id="toastDuration" value="${s.toastDuration}" min="500" max="10000" step="500" style="width:70px;text-align:center;">
+                    </div>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Max History Depth</div>
+                            <div class="settings-item-desc">Version snapshots per request</div>
+                        </div>
+                        <input type="number" id="maxHistoryDepth" value="${s.maxHistoryDepth}" min="5" max="100" style="width:60px;text-align:center;">
+                    </div>
                 </div>
+
                 <div class="settings-group">
                     <h4>Help</h4>
                     <div class="settings-item">
@@ -4695,11 +4830,30 @@ class PostmanHelperApp {
                         </div>
                         <button id="showTutorialBtn" class="secondary" style="padding: 5px 14px; font-size: 12px;">Show</button>
                     </div>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Keyboard Shortcuts</div>
+                            <div class="settings-item-desc">View all available shortcuts</div>
+                        </div>
+                        <button id="showShortcutsBtn" class="secondary" style="padding: 5px 14px; font-size: 12px;">View</button>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h4>About</h4>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Postman Helper</div>
+                            <div class="settings-item-desc">v1.98 &mdash; Electron desktop app for API request management</div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="settings-footer">
-                <button id="saveSettingsBtn">Save Settings</button>
+                <button id="resetSettingsBtn" class="secondary">Reset to Defaults</button>
+                <div style="flex:1"></div>
                 <button id="cancelSettingsBtn" class="secondary">Cancel</button>
+                <button id="saveSettingsBtn">Save Settings</button>
             </div>
         `;
 
@@ -4713,6 +4867,12 @@ class PostmanHelperApp {
                 this.tutorial.reset();
                 this.tutorial.show();
             }, 350);
+        });
+
+        // Show Shortcuts button
+        document.getElementById('showShortcutsBtn').addEventListener('click', () => {
+            closeSettings();
+            setTimeout(() => this.showKeyboardShortcuts(), 350);
         });
 
         // Live dark mode toggle preview
@@ -4744,22 +4904,48 @@ class PostmanHelperApp {
         // Cancel button
         document.getElementById('cancelSettingsBtn').addEventListener('click', () => {
             // Revert theme if changed
-            this.applyTheme(this.state.darkMode ? 'dark' : 'light');
+            this.applyTheme(s.darkMode ? 'dark' : 'light');
+            closeSettings();
+        });
+
+        // Reset to Defaults
+        document.getElementById('resetSettingsBtn').addEventListener('click', () => {
+            this.state.resetSettings();
+            this.applySettingsToUI();
+            this.showToast('Settings reset to defaults');
             closeSettings();
         });
 
         // Save button
         document.getElementById('saveSettingsBtn').addEventListener('click', () => {
-            this.state.autoSave = document.getElementById('autoSave').checked;
-            this.state.darkMode = document.getElementById('darkMode').checked;
-            this.state.autoFormat = document.getElementById('autoFormat').checked;
-            this.state.showLineNumbers = document.getElementById('showLineNumbers').checked;
-            this.state.inheritGlobally = document.getElementById('inheritGlobally').checked;
+            s.autoSave = document.getElementById('autoSave').checked;
+            s.darkMode = document.getElementById('darkMode').checked;
+            s.autoFormat = document.getElementById('autoFormat').checked;
+            s.showLineNumbers = document.getElementById('showLineNumbers').checked;
+            s.inheritGlobally = document.getElementById('inheritGlobally').checked;
+            s.confirmBeforeDelete = document.getElementById('confirmBeforeDelete').checked;
+            s.defaultMethod = document.getElementById('defaultMethod').value;
+            s.requestTimeout = parseInt(document.getElementById('requestTimeout').value, 10) || 30;
+            s.editorFontSize = parseInt(document.getElementById('editorFontSize').value, 10) || 13;
+            s.toastDuration = parseInt(document.getElementById('toastDuration').value, 10) || 2000;
+            s.maxHistoryDepth = parseInt(document.getElementById('maxHistoryDepth').value, 10) || 20;
 
-            this.applyTheme(this.state.darkMode ? 'dark' : 'light');
+            s.saveSettings();
+            this.applySettingsToUI();
             this.showToast('Settings saved');
             closeSettings();
         });
+    }
+
+    // Apply settings to UI elements
+    applySettingsToUI() {
+        // Font size for textareas
+        const size = this.state.editorFontSize + 'px';
+        document.querySelectorAll('textarea').forEach(ta => {
+            ta.style.fontSize = size;
+        });
+        // Theme
+        this.applyTheme(this.state.darkMode ? 'dark' : 'light');
     }
 
     // Theme Management
@@ -4769,7 +4955,8 @@ class PostmanHelperApp {
     }
 
     // Toast Notification
-    showToast(message, duration = 2000, type = 'info') {
+    showToast(message, duration, type = 'info') {
+        if (duration === undefined) duration = (this.state && this.state.toastDuration) || 2000;
         // Rate limiting: max 5 visible toasts, queue the rest
         if (!this._toastQueue) this._toastQueue = [];
         const MAX_VISIBLE = 5;
@@ -5885,7 +6072,8 @@ class PostmanHelperApp {
                 method: form.method,
                 url: url,
                 headers: headers,
-                body: body
+                body: body,
+                timeout: (this.state.requestTimeout || 30) * 1000
             });
             const elapsed = result.time || (Date.now() - startTime);
             this.displayResponse(result);
@@ -6391,6 +6579,12 @@ class PostmanHelperApp {
                     autoFormat: this.state.autoFormat,
                     showLineNumbers: this.state.showLineNumbers,
                     inheritGlobally: this.state.inheritGlobally,
+                    defaultMethod: this.state.defaultMethod,
+                    requestTimeout: this.state.requestTimeout,
+                    editorFontSize: this.state.editorFontSize,
+                    maxHistoryDepth: this.state.maxHistoryDepth,
+                    toastDuration: this.state.toastDuration,
+                    confirmBeforeDelete: this.state.confirmBeforeDelete,
                     sidebarWidth: parseInt(getComputedStyle(document.querySelector('.sidebar')).width, 10) || 280
                 }
             };
@@ -6422,12 +6616,12 @@ class PostmanHelperApp {
         try {
             // Restore settings first
             if (data.settings) {
-                this.state.autoSave = data.settings.autoSave !== undefined ? data.settings.autoSave : false;
-                this.state.darkMode = data.settings.darkMode !== undefined ? data.settings.darkMode : false;
-                this.state.autoFormat = data.settings.autoFormat !== undefined ? data.settings.autoFormat : true;
-                this.state.showLineNumbers = data.settings.showLineNumbers !== undefined ? data.settings.showLineNumbers : true;
-                this.state.inheritGlobally = data.settings.inheritGlobally !== undefined ? data.settings.inheritGlobally : true;
+                const defaults = AppState.DEFAULT_SETTINGS;
+                for (const key of Object.keys(defaults)) {
+                    this.state[key] = data.settings[key] !== undefined ? data.settings[key] : defaults[key];
+                }
                 this.applyTheme(this.state.darkMode ? 'dark' : 'light');
+                this.applySettingsToUI();
                 if (data.settings.sidebarWidth) {
                     document.documentElement.style.setProperty('--sidebar-width', data.settings.sidebarWidth + 'px');
                 }
