@@ -2656,6 +2656,12 @@ class PostmanHelperApp {
             const computedWidth = parseInt(getComputedStyle(sidebar).width, 10);
             localStorage.setItem('sidebarWidth', computedWidth);
         });
+
+        // Double-click to reset sidebar width to default
+        handle.addEventListener('dblclick', () => {
+            document.documentElement.style.setProperty('--sidebar-width', '280px');
+            localStorage.setItem('sidebarWidth', 280);
+        });
     }
 
     setupEventListeners() {
@@ -2731,9 +2737,16 @@ class PostmanHelperApp {
 
     setupFilterListeners() {
         const filterText = document.getElementById('filterText');
+        const clearBtn = document.getElementById('filterClearBtn');
         if (filterText) {
             let debounceTimer = null;
+            const updateClearBtn = () => {
+                if (clearBtn) {
+                    clearBtn.classList.toggle('visible', filterText.value.length > 0);
+                }
+            };
             filterText.addEventListener('input', () => {
+                updateClearBtn();
                 clearTimeout(debounceTimer);
                 debounceTimer = setTimeout(() => {
                     this.state.filters.text = filterText.value.toLowerCase();
@@ -2743,6 +2756,15 @@ class PostmanHelperApp {
                     }
                 }, 200);
             });
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    filterText.value = '';
+                    this.state.filters.text = '';
+                    updateClearBtn();
+                    this.updateCollectionTree();
+                    filterText.focus();
+                });
+            }
         }
 
         document.querySelectorAll('.method-chip').forEach(chip => {
@@ -3774,10 +3796,11 @@ class PostmanHelperApp {
             const activeClass = isActive ? ' active' : '';
             const colId = `collection-${index}`;
 
+            const totalRequests = this.countCollectionRequests(collection);
             html += `
                 <div class="tree-item collection-item${activeClass}" data-type="collection" data-collection-index="${index}" data-collapsible="true">
                     <span class="tree-toggle" data-target="${colId}">▶</span>
-                    <span class="tree-label">${isActive ? '📚' : '📁'} ${collection.name}</span>
+                    <span class="tree-label">${isActive ? '\uD83D\uDCDA' : '\uD83D\uDCC1'} ${this.escapeHtml(collection.name)}<span class="collection-count">${totalRequests}</span></span>
                 </div>
                 <div id="${colId}" class="tree-children" data-drop-target="collection" data-collection-index="${index}">
             `;
@@ -3881,6 +3904,18 @@ class PostmanHelperApp {
         return html;
     }
     
+    countCollectionRequests(collection) {
+        let count = (collection.requests || []).length;
+        const countFolders = (folders) => {
+            for (const f of (folders || [])) {
+                count += (f.requests || []).length;
+                if (f.folders) countFolders(f.folders);
+            }
+        };
+        countFolders(collection.folders);
+        return count;
+    }
+
     setupCollapsibleTree() {
         // Set up toggle functionality for all collapsible elements
         document.querySelectorAll('.tree-toggle').forEach(toggle => {
