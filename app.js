@@ -2660,28 +2660,187 @@ class PostmanHelperApp {
     }
 
     handleKeyboardShortcuts(e) {
-        // Check if we're in an input field
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        const mod = e.metaKey || e.ctrlKey;
+        const inInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
+
+        // Escape — always active: close open panels/dialogs
+        if (e.key === 'Escape') {
+            const overlay = document.querySelector('.dialog-overlay');
+            if (overlay) return; // let dialog handle its own Escape
+            const settings = document.querySelector('.settings-panel');
+            if (settings) {
+                const closeBtn = document.getElementById('closeSettingsBtn');
+                if (closeBtn) closeBtn.click();
+                return;
+            }
+            this.closeHistory();
+            // Blur any focused input
+            if (inInput) e.target.blur();
             return;
         }
 
-        // Command/Ctrl + N - New Request
-        if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
-            e.preventDefault();
-            this.createNewRequest();
+        // Modifier combos — allowed even inside input/textarea
+        if (mod) {
+            // Cmd+S — Save current request (NOT export)
+            if (e.key === 's' && !e.shiftKey) {
+                e.preventDefault();
+                this.saveRequest();
+                return;
+            }
+
+            // Cmd+Shift+E — Export collection
+            if (e.key === 'E' || (e.key === 'e' && e.shiftKey)) {
+                e.preventDefault();
+                this.exportCollection();
+                return;
+            }
+
+            // Cmd+Enter — Send request
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.sendRequest();
+                return;
+            }
+
+            // Cmd+N — New request
+            if (e.key === 'n' && !e.shiftKey) {
+                e.preventDefault();
+                this.createNewRequest();
+                return;
+            }
+
+            // Cmd+O — Import collection
+            if (e.key === 'o') {
+                e.preventDefault();
+                this.importCollection();
+                return;
+            }
+
+            // Cmd+D — Duplicate request
+            if (e.key === 'd') {
+                e.preventDefault();
+                this.duplicateRequest();
+                return;
+            }
+
+            // Cmd+F — Focus sidebar search
+            if (e.key === 'f' && !e.shiftKey) {
+                e.preventDefault();
+                const filterInput = document.getElementById('filterText');
+                if (filterInput) filterInput.focus();
+                return;
+            }
+
+            // Cmd+1/2/3 — Switch tabs
+            if (e.key === '1') {
+                e.preventDefault();
+                this.switchTab('request');
+                return;
+            }
+            if (e.key === '2') {
+                e.preventDefault();
+                this.switchTab('inheritance');
+                return;
+            }
+            if (e.key === '3') {
+                e.preventDefault();
+                this.switchTab('tests');
+                return;
+            }
+
+            // Cmd+, — Open settings
+            if (e.key === ',') {
+                e.preventDefault();
+                this.showSettings();
+                return;
+            }
+
+            // Cmd+/ — Show keyboard shortcuts help
+            if (e.key === '/') {
+                e.preventDefault();
+                this.showKeyboardShortcuts();
+                return;
+            }
+
+            return;
         }
 
-        // Command/Ctrl + O - Import
-        if ((e.metaKey || e.ctrlKey) && e.key === 'o') {
-            e.preventDefault();
-            this.importCollection();
-        }
+        // Non-modifier keys — block when in input/textarea
+        if (inInput) return;
+    }
 
-        // Command/Ctrl + S - Export
-        if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-            e.preventDefault();
-            this.exportCollection();
-        }
+    showKeyboardShortcuts() {
+        const shortcuts = [
+            ['\u2318S', 'Save current request'],
+            ['\u2318\u21E7E', 'Export collection'],
+            ['\u2318\u23CE', 'Send request'],
+            ['\u2318N', 'New request'],
+            ['\u2318O', 'Import collection'],
+            ['\u2318D', 'Duplicate request'],
+            ['\u2318F', 'Focus search'],
+            ['\u23181/2/3', 'Switch tab (Request/Inherit/Tests)'],
+            ['\u2318,', 'Open settings'],
+            ['\u2318/', 'Show this help'],
+            ['Esc', 'Close panel / blur input']
+        ];
+
+        const overlay = document.createElement('div');
+        overlay.className = 'dialog-overlay';
+
+        const box = document.createElement('div');
+        box.className = 'dialog-box';
+        box.style.maxWidth = '420px';
+
+        const title = document.createElement('h3');
+        title.textContent = 'Keyboard Shortcuts';
+        title.style.marginBottom = '16px';
+        box.appendChild(title);
+
+        const table = document.createElement('table');
+        table.className = 'shortcuts-table';
+        shortcuts.forEach(([key, desc]) => {
+            const row = document.createElement('tr');
+            const kd = document.createElement('td');
+            const kbd = document.createElement('kbd');
+            kbd.textContent = key;
+            kd.appendChild(kbd);
+            const dd = document.createElement('td');
+            dd.textContent = desc;
+            row.appendChild(kd);
+            row.appendChild(dd);
+            table.appendChild(row);
+        });
+        box.appendChild(table);
+
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'dialog-buttons';
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Close';
+        closeBtn.className = 'dialog-btn primary';
+        btnContainer.appendChild(closeBtn);
+        box.appendChild(btnContainer);
+
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+
+        const cleanup = () => {
+            document.removeEventListener('keydown', keyHandler);
+            overlay.remove();
+        };
+
+        closeBtn.addEventListener('click', cleanup);
+        overlay.addEventListener('click', (ev) => {
+            if (ev.target === overlay) cleanup();
+        });
+
+        const keyHandler = (ev) => {
+            if (ev.key === 'Escape' || ev.key === '/') {
+                ev.preventDefault();
+                cleanup();
+            }
+        };
+        document.addEventListener('keydown', keyHandler);
+        closeBtn.focus();
     }
 
     switchTab(tabName) {
