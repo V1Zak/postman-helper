@@ -413,6 +413,17 @@ try {
 
 // Custom Dialog System - Replacement for prompt(), confirm(), and alert()
 class DialogSystem {
+    // Apply ARIA attributes for accessibility
+    static _applyAriaAttrs(overlay, dialogBox, titleElement) {
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        if (titleElement) {
+            const titleId = 'dialog-title-' + Date.now();
+            titleElement.id = titleId;
+            overlay.setAttribute('aria-labelledby', titleId);
+        }
+    }
+
     // Animated close: add closing class, then remove after animation
     static _closeOverlay(overlay, keyHandler) {
         if (keyHandler) document.removeEventListener('keydown', keyHandler);
@@ -493,6 +504,7 @@ class DialogSystem {
         dialogBox.appendChild(input);
         dialogBox.appendChild(buttonContainer);
         overlay.appendChild(dialogBox);
+        DialogSystem._applyAriaAttrs(overlay, dialogBox, titleElement);
         document.body.appendChild(overlay);
 
         DialogSystem.trapFocus(dialogBox);
@@ -548,6 +560,7 @@ class DialogSystem {
         dialogBox.appendChild(messageElement);
         dialogBox.appendChild(buttonContainer);
         overlay.appendChild(dialogBox);
+        DialogSystem._applyAriaAttrs(overlay, dialogBox, messageElement);
         document.body.appendChild(overlay);
 
         DialogSystem.trapFocus(dialogBox);
@@ -601,6 +614,7 @@ class DialogSystem {
         dialogBox.appendChild(msgEl);
         dialogBox.appendChild(buttonContainer);
         overlay.appendChild(dialogBox);
+        DialogSystem._applyAriaAttrs(overlay, dialogBox, msgEl);
         document.body.appendChild(overlay);
 
         DialogSystem.trapFocus(dialogBox);
@@ -647,6 +661,7 @@ class DialogSystem {
         dialogBox.appendChild(msgEl);
         dialogBox.appendChild(buttonContainer);
         overlay.appendChild(dialogBox);
+        DialogSystem._applyAriaAttrs(overlay, dialogBox, msgEl);
         document.body.appendChild(overlay);
 
         DialogSystem.trapFocus(dialogBox);
@@ -709,6 +724,7 @@ class DialogSystem {
         dialogBox.appendChild(select);
         dialogBox.appendChild(buttonContainer);
         overlay.appendChild(dialogBox);
+        DialogSystem._applyAriaAttrs(overlay, dialogBox, titleEl);
         document.body.appendChild(overlay);
 
         DialogSystem.trapFocus(dialogBox);
@@ -801,6 +817,7 @@ class DialogSystem {
         dialogBox.appendChild(selectActions);
         dialogBox.appendChild(buttonContainer);
         overlay.appendChild(dialogBox);
+        DialogSystem._applyAriaAttrs(overlay, dialogBox, titleEl);
         document.body.appendChild(overlay);
 
         DialogSystem.trapFocus(dialogBox);
@@ -2776,9 +2793,11 @@ class PostmanHelperApp {
                 if (idx === -1) {
                     this.state.filters.methods.push(method);
                     chip.classList.add('active');
+                    chip.setAttribute('aria-pressed', 'true');
                 } else {
                     this.state.filters.methods.splice(idx, 1);
                     chip.classList.remove('active');
+                    chip.setAttribute('aria-pressed', 'false');
                 }
                 this.updateCollectionTree();
             });
@@ -2789,6 +2808,7 @@ class PostmanHelperApp {
             hasTestsBtn.addEventListener('click', () => {
                 this.state.filters.hasTests = !this.state.filters.hasTests;
                 hasTestsBtn.classList.toggle('active', this.state.filters.hasTests);
+                hasTestsBtn.setAttribute('aria-pressed', String(this.state.filters.hasTests));
                 this.updateCollectionTree();
             });
         }
@@ -2798,6 +2818,7 @@ class PostmanHelperApp {
             hasBodyBtn.addEventListener('click', () => {
                 this.state.filters.hasBody = !this.state.filters.hasBody;
                 hasBodyBtn.classList.toggle('active', this.state.filters.hasBody);
+                hasBodyBtn.setAttribute('aria-pressed', String(this.state.filters.hasBody));
                 this.updateCollectionTree();
             });
         }
@@ -2807,23 +2828,27 @@ class PostmanHelperApp {
             regexToggle.addEventListener('click', () => {
                 this.state.filters.useRegex = !this.state.filters.useRegex;
                 regexToggle.classList.toggle('active', this.state.filters.useRegex);
+                regexToggle.setAttribute('aria-pressed', String(this.state.filters.useRegex));
                 this.updateCollectionTree();
             });
         }
 
-        const clearBtn = document.getElementById('filterClearBtn');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', () => {
+        const clearAllBtn = document.getElementById('filterClearAllBtn');
+        if (clearAllBtn) {
+            clearAllBtn.addEventListener('click', () => {
                 this.state.filters = { text: '', methods: [], hasTests: false, hasBody: false, useRegex: false };
                 const filterTextInput = document.getElementById('filterText');
                 if (filterTextInput) filterTextInput.value = '';
-                document.querySelectorAll('.method-chip').forEach(c => c.classList.remove('active'));
+                document.querySelectorAll('.method-chip').forEach(c => {
+                    c.classList.remove('active');
+                    c.setAttribute('aria-pressed', 'false');
+                });
                 const ht = document.getElementById('filterHasTests');
                 const hb = document.getElementById('filterHasBody');
                 const rt = document.getElementById('filterRegexToggle');
-                if (ht) ht.classList.remove('active');
-                if (hb) hb.classList.remove('active');
-                if (rt) rt.classList.remove('active');
+                if (ht) { ht.classList.remove('active'); ht.setAttribute('aria-pressed', 'false'); }
+                if (hb) { hb.classList.remove('active'); hb.setAttribute('aria-pressed', 'false'); }
+                if (rt) { rt.classList.remove('active'); rt.setAttribute('aria-pressed', 'false'); }
                 this.updateCollectionTree();
             });
         }
@@ -3022,9 +3047,11 @@ class PostmanHelperApp {
             pane.style.display = 'none';
         });
 
-        // Remove active class from all tabs
+        // Remove active class from all tabs and update ARIA
         document.querySelectorAll('.tab').forEach(tab => {
             tab.classList.remove('active');
+            tab.setAttribute('aria-selected', 'false');
+            tab.setAttribute('tabindex', '-1');
         });
 
         // Show selected tab pane
@@ -3033,10 +3060,12 @@ class PostmanHelperApp {
             tabPane.style.display = 'block';
         }
 
-        // Add active class to selected tab
+        // Add active class to selected tab and update ARIA
         const activeTab = document.querySelector(`.tab[data-tab="${tabName}"]`);
         if (activeTab) {
             activeTab.classList.add('active');
+            activeTab.setAttribute('aria-selected', 'true');
+            activeTab.setAttribute('tabindex', '0');
         }
 
         // Update tab content based on current state
@@ -3306,7 +3335,7 @@ class PostmanHelperApp {
                 <div class="header-row">
                     <input type="text" class="header-key" value="${key}" placeholder="Header Name">
                     <input type="text" class="header-value" value="${value}" placeholder="Header Value">
-                    <button class="remove-header-btn" data-key="${key}">❌</button>
+                    <button class="remove-header-btn" data-key="${key}" aria-label="Remove header ${key}">\u274C</button>
                 </div>
             `;
         }
@@ -3326,7 +3355,7 @@ class PostmanHelperApp {
                     <div class="header-row">
                         <input type="text" class="global-header-key" value="${header.key}" placeholder="Header Name">
                         <input type="text" class="global-header-value" value="${header.value}" placeholder="Header Value">
-                        <button class="remove-global-header-btn" data-key="${header.key}">❌</button>
+                        <button class="remove-global-header-btn" data-key="${header.key}" aria-label="Remove global header ${header.key}">\u274C</button>
                     </div>
                 `;
             }
@@ -3344,7 +3373,7 @@ class PostmanHelperApp {
                 endpointsHtml += `
                     <div style="margin-bottom: 8px; display: flex; align-items: center;">
                         <span style="flex: 1; word-break: break-all;">${endpoint}</span>
-                        <button class="remove-base-endpoint-btn" data-endpoint="${endpoint}" style="margin-left: 10px;">❌</button>
+                        <button class="remove-base-endpoint-btn" data-endpoint="${endpoint}" style="margin-left: 10px;" aria-label="Remove endpoint">\u274C</button>
                     </div>
                 `;
             }
@@ -3368,7 +3397,7 @@ class PostmanHelperApp {
                                 <button class="template-action-btn apply-body-tmpl-btn" data-name="${tmpl.name}">Apply</button>
                                 <button class="template-action-btn apply-body-tmpl-all-btn" data-name="${tmpl.name}">Apply to All</button>
                                 <button class="template-action-btn create-req-from-tmpl-btn" data-name="${tmpl.name}">+ Request</button>
-                                <button class="template-action-btn remove-body-tmpl-btn" data-name="${tmpl.name}">❌</button>
+                                <button class="template-action-btn remove-body-tmpl-btn" data-name="${tmpl.name}" aria-label="Remove body template">\u274C</button>
                             </div>
                         </div>
                         <div class="template-preview">${preview}</div>
@@ -3394,7 +3423,7 @@ class PostmanHelperApp {
                             <div class="template-actions">
                                 <button class="template-action-btn apply-test-tmpl-btn" data-name="${tmpl.name}">Apply</button>
                                 <button class="template-action-btn apply-test-tmpl-all-btn" data-name="${tmpl.name}">Apply to All</button>
-                                <button class="template-action-btn remove-test-tmpl-btn" data-name="${tmpl.name}">❌</button>
+                                <button class="template-action-btn remove-test-tmpl-btn" data-name="${tmpl.name}" aria-label="Remove test template">\u274C</button>
                             </div>
                         </div>
                         <div class="template-preview">${preview}</div>
@@ -3804,12 +3833,13 @@ class PostmanHelperApp {
             const colId = `collection-${index}`;
 
             const totalRequests = this.countCollectionRequests(collection);
+            const colExpanded = this._expandedFolders.has(colId);
             html += `
-                <div class="tree-item collection-item${activeClass}" data-type="collection" data-collection-index="${index}" data-collapsible="true">
-                    <span class="tree-toggle" data-target="${colId}">▶</span>
-                    <span class="tree-label">${isActive ? '\uD83D\uDCDA' : '\uD83D\uDCC1'} ${this.escapeHtml(collection.name)}<span class="collection-count">${totalRequests}</span></span>
+                <div class="tree-item collection-item${activeClass}" data-type="collection" data-collection-index="${index}" data-collapsible="true" role="treeitem" aria-expanded="${colExpanded}" aria-selected="${isActive}" tabindex="${index === 0 ? '0' : '-1'}">
+                    <span class="tree-toggle" data-target="${colId}" aria-hidden="true">\u25B6</span>
+                    <span class="tree-label"><span aria-hidden="true">${isActive ? '\uD83D\uDCDA' : '\uD83D\uDCC1'}</span> ${this.escapeHtml(collection.name)}<span class="collection-count" aria-label="${totalRequests} requests">${totalRequests}</span></span>
                 </div>
-                <div id="${colId}" class="tree-children" data-drop-target="collection" data-collection-index="${index}">
+                <div id="${colId}" class="tree-children" role="group" data-drop-target="collection" data-collection-index="${index}">
             `;
 
             // Add requests at root level (filtered)
@@ -3820,12 +3850,13 @@ class PostmanHelperApp {
                 if (visibleRequests.length > 0) {
                     html += '<div class="tree-section">Root Requests:</div>';
                     for (const request of visibleRequests) {
-                        const reqActive = this.state.currentRequest === request ? 'active' : '';
+                        const isReqActive = this.state.currentRequest === request;
+                        const reqActive = isReqActive ? 'active' : '';
                         const displayName = filtering && f.text
                             ? this.highlightMatch(request.name, f.text, f.useRegex)
                             : this.escapeHtml(request.name);
-                        const dirtyDot = this.state.isRequestDirty(request.name) ? '<span class="dirty-indicator">●</span>' : '';
-                        html += `<div class="tree-item ${reqActive}" data-type="request" data-id="${request.name}" data-collection-index="${index}" draggable="true"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
+                        const dirtyDot = this.state.isRequestDirty(request.name) ? '<span class="dirty-indicator" aria-label="unsaved changes">\u25CF</span>' : '';
+                        html += `<div class="tree-item ${reqActive}" data-type="request" data-id="${request.name}" data-collection-index="${index}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
                     }
                 }
             }
@@ -3874,14 +3905,16 @@ class PostmanHelperApp {
 
     renderCollapsibleFolder(folder, depth = 0) {
         const folderId = `folder-${folder.name.replace(/\s+/g, '-')}-${depth}`;
-        const activeClass = this.state.currentFolder === folder ? 'active' : '';
+        const isFolderActive = this.state.currentFolder === folder;
+        const activeClass = isFolderActive ? 'active' : '';
+        const folderExpanded = this._expandedFolders.has(folderId);
 
         let html = `
-            <div class="tree-item folder ${activeClass}" data-type="folder" data-id="${folder.name}" data-drop-target="folder" draggable="true" style="padding-left: ${12 + depth * 15}px">
-                <span class="tree-toggle" data-target="${folderId}">▶</span>
-                <span class="tree-label">📁 ${folder.name}</span>
+            <div class="tree-item folder ${activeClass}" data-type="folder" data-id="${folder.name}" data-drop-target="folder" draggable="true" style="padding-left: ${12 + depth * 15}px" role="treeitem" aria-expanded="${folderExpanded}" aria-selected="${isFolderActive}" tabindex="-1">
+                <span class="tree-toggle" data-target="${folderId}" aria-hidden="true">\u25B6</span>
+                <span class="tree-label"><span aria-hidden="true">\uD83D\uDCC1</span> ${folder.name}</span>
             </div>
-            <div id="${folderId}" class="tree-children" data-drop-target="folder" data-id="${folder.name}" style="padding-left: ${24 + depth * 15}px">
+            <div id="${folderId}" class="tree-children" role="group" data-drop-target="folder" data-id="${folder.name}" style="padding-left: ${24 + depth * 15}px">
         `;
 
         // Add folder contents (filtered)
@@ -3892,12 +3925,13 @@ class PostmanHelperApp {
                 ? folder.requests.filter(r => this.matchesFilters(r))
                 : folder.requests;
             for (const request of visibleRequests) {
-                const requestActive = this.state.currentRequest === request ? 'active' : '';
+                const isReqActive = this.state.currentRequest === request;
+                const requestActive = isReqActive ? 'active' : '';
                 const displayName = filtering && f.text
                     ? this.highlightMatch(request.name, f.text, f.useRegex)
                     : this.escapeHtml(request.name);
-                const dirtyDot = this.state.isRequestDirty(request.name) ? '<span class="dirty-indicator">●</span>' : '';
-                html += `<div class="tree-item ${requestActive}" data-type="request" data-id="${request.name}" draggable="true"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
+                const dirtyDot = this.state.isRequestDirty(request.name) ? '<span class="dirty-indicator" aria-label="unsaved changes">\u25CF</span>' : '';
+                html += `<div class="tree-item ${requestActive}" data-type="request" data-id="${request.name}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
             }
         }
 
@@ -3957,6 +3991,9 @@ class PostmanHelperApp {
             children.style.display = shouldExpand ? 'block' : 'none';
             const toggle = document.querySelector(`.tree-toggle[data-target="${nodeId}"]`);
             if (toggle) toggle.textContent = shouldExpand ? '\u25BC' : '\u25B6';
+            // Update aria-expanded on the parent treeitem
+            const parentItem = toggle ? toggle.closest('[role="treeitem"]') : null;
+            if (parentItem) parentItem.setAttribute('aria-expanded', String(shouldExpand));
         });
 
         // NOTE: Toggle click events are handled via event delegation in setupTreeClickHandlers()
@@ -3993,14 +4030,17 @@ class PostmanHelperApp {
                 const targetElement = document.getElementById(targetId);
                 if (targetElement) {
                     const isCollapsed = targetElement.style.display === 'none';
+                    const parentItem = toggle.closest('[role="treeitem"]');
                     if (isCollapsed) {
                         targetElement.style.display = 'block';
                         toggle.textContent = '\u25BC';
                         this._expandedFolders.add(targetId);
+                        if (parentItem) parentItem.setAttribute('aria-expanded', 'true');
                     } else {
                         targetElement.style.display = 'none';
                         toggle.textContent = '\u25B6';
                         this._expandedFolders.delete(targetId);
+                        if (parentItem) parentItem.setAttribute('aria-expanded', 'false');
                     }
                 }
                 return;
@@ -4092,6 +4132,62 @@ class PostmanHelperApp {
         };
 
         collectionTree.addEventListener('click', this._treeClickHandler);
+
+        // Keyboard navigation for tree (Arrow keys, Enter, Home, End)
+        if (this._treeKeyHandler) {
+            collectionTree.removeEventListener('keydown', this._treeKeyHandler);
+        }
+        this._treeKeyHandler = (e) => {
+            const treeItems = Array.from(collectionTree.querySelectorAll('[role="treeitem"]'));
+            if (treeItems.length === 0) return;
+
+            // Only visible items (parent group is not display:none)
+            const visibleItems = treeItems.filter(item => {
+                let el = item;
+                while (el && el !== collectionTree) {
+                    if (el.style && el.style.display === 'none') return false;
+                    el = el.parentElement;
+                }
+                return true;
+            });
+
+            const currentIdx = visibleItems.indexOf(document.activeElement);
+            if (currentIdx === -1 && !['ArrowDown', 'Home'].includes(e.key)) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                const next = currentIdx < visibleItems.length - 1 ? currentIdx + 1 : 0;
+                visibleItems[next].focus();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                const prev = currentIdx > 0 ? currentIdx - 1 : visibleItems.length - 1;
+                visibleItems[prev].focus();
+            } else if (e.key === 'Home') {
+                e.preventDefault();
+                visibleItems[0].focus();
+            } else if (e.key === 'End') {
+                e.preventDefault();
+                visibleItems[visibleItems.length - 1].focus();
+            } else if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                document.activeElement.click();
+            } else if (e.key === 'ArrowRight') {
+                // Expand if collapsed
+                const focused = document.activeElement;
+                if (focused && focused.getAttribute('aria-expanded') === 'false') {
+                    const toggle = focused.querySelector('.tree-toggle');
+                    if (toggle) toggle.click();
+                }
+            } else if (e.key === 'ArrowLeft') {
+                // Collapse if expanded
+                const focused = document.activeElement;
+                if (focused && focused.getAttribute('aria-expanded') === 'true') {
+                    const toggle = focused.querySelector('.tree-toggle');
+                    if (toggle) toggle.click();
+                }
+            }
+        };
+        collectionTree.addEventListener('keydown', this._treeKeyHandler);
     }
 
     matchesFilters(request) {
@@ -4375,7 +4471,7 @@ class PostmanHelperApp {
         headerRow.innerHTML = `
             <input type="text" class="header-key" placeholder="Header Name">
             <input type="text" class="header-value" placeholder="Header Value">
-            <button class="remove-header-btn">❌</button>
+            <button class="remove-header-btn" aria-label="Remove header">\u274C</button>
         `;
 
         container.appendChild(headerRow);
@@ -4853,7 +4949,7 @@ class PostmanHelperApp {
         panel.innerHTML = `
             <div class="settings-header">
                 <h3>Settings</h3>
-                <button class="settings-close-btn" id="closeSettingsBtn">&times;</button>
+                <button class="settings-close-btn" id="closeSettingsBtn" aria-label="Close settings">&times;</button>
             </div>
             <div class="settings-body">
                 <div class="settings-group">
@@ -5110,6 +5206,8 @@ class PostmanHelperApp {
 
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
+        toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+        toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
 
         const msgSpan = document.createElement('span');
         msgSpan.className = 'toast-message';
@@ -5450,17 +5548,22 @@ class PostmanHelperApp {
         const menu = document.createElement('div');
         menu.className = 'context-menu';
         menu.id = 'contextMenu';
+        menu.setAttribute('role', 'menu');
+        menu.setAttribute('aria-label', 'Context menu');
 
         items.forEach(item => {
             if (item.divider) {
                 const div = document.createElement('div');
                 div.className = 'context-menu-divider';
+                div.setAttribute('role', 'separator');
                 menu.appendChild(div);
                 return;
             }
             const el = document.createElement('div');
             el.className = 'context-menu-item' + (item.danger ? ' danger' : '');
             el.textContent = item.label;
+            el.setAttribute('role', 'menuitem');
+            el.setAttribute('tabindex', '-1');
             el.addEventListener('click', () => {
                 this.hideContextMenu();
                 item.action();
@@ -5484,11 +5587,30 @@ class PostmanHelperApp {
             document.removeEventListener('keydown', escHandler);
         };
         const escHandler = (e) => {
-            if (e.key === 'Escape') closeHandler();
+            if (e.key === 'Escape') { closeHandler(); return; }
+            // Arrow key navigation within context menu
+            const menuItems = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+            if (menuItems.length === 0) return;
+            const currentIdx = menuItems.indexOf(document.activeElement);
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                const next = currentIdx < menuItems.length - 1 ? currentIdx + 1 : 0;
+                menuItems[next].focus();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                const prev = currentIdx > 0 ? currentIdx - 1 : menuItems.length - 1;
+                menuItems[prev].focus();
+            } else if (e.key === 'Enter' && currentIdx >= 0) {
+                e.preventDefault();
+                menuItems[currentIdx].click();
+            }
         };
         setTimeout(() => {
             document.addEventListener('click', closeHandler);
             document.addEventListener('keydown', escHandler);
+            // Focus first menu item
+            const firstItem = menu.querySelector('[role="menuitem"]');
+            if (firstItem) firstItem.focus();
         }, 0);
     }
 
@@ -5796,13 +5918,13 @@ class PostmanHelperApp {
             panel.innerHTML = `
                 <div class="settings-header">
                     <h3>Environments</h3>
-                    <button class="settings-close-btn" id="closeEnvMgrBtn">&times;</button>
+                    <button class="settings-close-btn" id="closeEnvMgrBtn" aria-label="Close environment manager">&times;</button>
                 </div>
                 <div class="env-list">
                     ${this.state.environments.map(env => `
                         <div class="env-list-item ${env.name === editingEnvName ? 'active' : ''}" data-env="${env.name}">
                             <span>${env.name}</span>
-                            <button class="env-var-remove" data-delete-env="${env.name}">&times;</button>
+                            <button class="env-var-remove" data-delete-env="${env.name}" aria-label="Delete environment ${env.name}">&times;</button>
                         </div>
                     `).join('')}
                     <button id="addEnvBtn" style="margin-top:8px; font-size:12px; padding:6px 12px;">+ Add Environment</button>
@@ -6272,10 +6394,8 @@ class PostmanHelperApp {
                     <span class="response-status status-err">Error</span>
                     <span class="response-time">${this.escapeHtml(response.error || 'Unknown error')}</span>
                     <span style="flex:1"></span>
-                    <button class="response-close-btn" title="Dismiss">&times;</button>
-                </div>
-            `;
-            requestTab.appendChild(panel);
+                    <button class="response-close-btn" title="Dismiss" aria-label="Dismiss response">&times;</button>
+                </div>`;
             panel.querySelector('.response-close-btn').addEventListener('click', () => panel.remove());
             return;
         }
@@ -6325,7 +6445,7 @@ class PostmanHelperApp {
                 <span style="flex:1"></span>
                 <button class="response-action-btn" id="copyResponseBtn" title="Copy body">Copy</button>
                 <button class="response-action-btn" id="saveResponseBtn" title="Save to file">Save</button>
-                <button class="response-close-btn" title="Dismiss">&times;</button>
+                <button class="response-close-btn" title="Dismiss" aria-label="Dismiss response">&times;</button>
             </div>
             <div class="response-tabs">
                 <div class="response-tab active" data-rtab="body">Body</div>
