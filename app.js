@@ -1794,6 +1794,286 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = Object.assign(module.exports || {}, { AnalyticsCollector });
 }
 
+// PluginAPI — restricted API surface exposed to each plugin
+class PluginAPI {
+    constructor(app, pluginName) {
+        this.pluginName = pluginName;
+        this._app = app;
+        this._storage = new Map();
+    }
+
+    // --- Read-only state access ---
+    getCurrentCollection() {
+        return this._app && this._app.state ? this._app.state.currentCollection : null;
+    }
+    getCurrentRequest() {
+        return this._app && this._app.state ? this._app.state.currentRequest : null;
+    }
+    getCollections() {
+        return this._app && this._app.state ? [...this._app.state.collections] : [];
+    }
+
+    // --- Notifications ---
+    showToast(message, duration, type) {
+        if (this._app && typeof this._app.showToast === 'function') {
+            this._app.showToast(message, duration, type);
+        }
+    }
+
+    // --- Per-plugin storage (in-memory, persisted via auto-save) ---
+    getStorage(key) {
+        return this._storage.get(key);
+    }
+    setStorage(key, value) {
+        this._storage.set(key, value);
+    }
+    deleteStorage(key) {
+        return this._storage.delete(key);
+    }
+    getStorageData() {
+        const obj = {};
+        for (const [k, v] of this._storage) obj[k] = v;
+        return obj;
+    }
+    loadStorageData(data) {
+        if (data && typeof data === 'object') {
+            for (const [k, v] of Object.entries(data)) this._storage.set(k, v);
+        }
+    }
+
+    // --- Logging ---
+    log(message) {
+        console.log(`[plugin:${this.pluginName}] ${message}`);
+    }
+    error(message) {
+        console.error(`[plugin:${this.pluginName}] ${message}`);
+    }
+}
+
+// PluginManager — discovers, loads, activates plugins and dispatches hooks
+class PluginManager {
+    constructor(app) {
+        this.app = app;
+        this.plugins = new Map();    // name -> { manifest, instance, api, enabled }
+        this.hooks = new Map();      // hookName -> [{ pluginName, handler }]
+    }
+
+    // --- Manifest validation ---
+    static REQUIRED_MANIFEST_FIELDS = ['name', 'version', 'main'];
+    static VALID_HOOKS = [
+        'onAppReady',
+        'onBeforeRequestSend',
+        'onResponseReceive',
+        'onRequestCreate',
+        'onRequestDelete',
+        'onCollectionImport',
+        'onCollectionExport',
+        'onBeforeTestRun',
+        'onTestComplete',
+        'onTabSwitch',
+        'onTreeSelect'
+    ];
+
+    validateManifest(manifest) {
+        const errors = [];
+        if (!manifest || typeof manifest !== 'object') {
+            return { valid: false, errors: ['Manifest must be a non-null object'] };
+        }
+        for (const field of PluginManager.REQUIRED_MANIFEST_FIELDS) {
+            if (!manifest[field]) {
+                errors.push(`Missing required field: ${field}`);
+            }
+        }
+        if (manifest.name && typeof manifest.name !== 'string') {
+            errors.push('name must be a string');
+        }
+        if (manifest.version && typeof manifest.version !== 'string') {
+            errors.push('version must be a string');
+        }
+        if (manifest.hooks && !Array.isArray(manifest.hooks)) {
+            errors.push('hooks must be an array');
+        }
+        if (manifest.hooks && Array.isArray(manifest.hooks)) {
+            for (const h of manifest.hooks) {
+                if (!PluginManager.VALID_HOOKS.includes(h)) {
+                    errors.push(`Unknown hook: ${h}`);
+                }
+            }
+        }
+        return { valid: errors.length === 0, errors };
+    }
+
+    /**
+     * Register a plugin from its manifest and module object.
+     * @param {object} manifest — parsed manifest.json
+     * @param {object} pluginModule — the exports of the plugin's main.js
+     * @returns {{ success: boolean, error?: string }}
+     */
+    registerPlugin(manifest, pluginModule) {
+        const validation = this.validateManifest(manifest);
+        if (!validation.valid) {
+            return { success: false, error: validation.errors.join('; ') };
+        }
+
+        if (this.plugins.has(manifest.name)) {
+            return { success: false, error: `Plugin "${manifest.name}" is already registered` };
+        }
+
+        const api = new PluginAPI(this.app, manifest.name);
+
+        this.plugins.set(manifest.name, {
+            manifest,
+            instance: pluginModule || {},
+            api,
+            enabled: true
+        });
+
+        // Register declared hooks
+        if (manifest.hooks && Array.isArray(manifest.hooks)) {
+            for (const hookName of manifest.hooks) {
+                if (!this.hooks.has(hookName)) {
+                    this.hooks.set(hookName, []);
+                }
+                // Look for a matching method on the module
+                const handler = pluginModule && typeof pluginModule[hookName] === 'function'
+                    ? pluginModule[hookName]
+                    : null;
+                if (handler) {
+                    this.hooks.get(hookName).push({
+                        pluginName: manifest.name,
+                        handler
+                    });
+                }
+            }
+        }
+
+        return { success: true };
+    }
+
+    /**
+     * Activate all registered plugins by calling their activate() method.
+     */
+    async activateAll() {
+        const results = [];
+        for (const [name, plugin] of this.plugins) {
+            if (!plugin.enabled) continue;
+            try {
+                if (plugin.instance && typeof plugin.instance.activate === 'function') {
+                    await plugin.instance.activate(plugin.api);
+                }
+                results.push({ name, activated: true });
+            } catch (err) {
+                plugin.enabled = false;
+                results.push({ name, activated: false, error: err.message });
+            }
+        }
+        return results;
+    }
+
+    /**
+     * Deactivate all registered plugins by calling their deactivate() method.
+     */
+    async deactivateAll() {
+        for (const [name, plugin] of this.plugins) {
+            try {
+                if (plugin.instance && typeof plugin.instance.deactivate === 'function') {
+                    await plugin.instance.deactivate();
+                }
+            } catch (err) {
+                console.error(`Plugin ${name} deactivation failed:`, err.message);
+            }
+        }
+    }
+
+    /**
+     * Dispatch a hook to all registered handlers.
+     * Transform hooks: each handler can return modified data that feeds into the next.
+     * @param {string} hookName
+     * @param {*} data
+     * @returns {Promise<*>} — final (possibly transformed) data
+     */
+    async dispatchHook(hookName, data) {
+        const handlers = this.hooks.get(hookName) || [];
+        let result = data;
+        for (const { pluginName, handler } of handlers) {
+            const plugin = this.plugins.get(pluginName);
+            if (!plugin || !plugin.enabled) continue;
+            try {
+                const hookResult = await handler(result, plugin.api);
+                if (hookResult !== undefined) {
+                    result = hookResult;
+                }
+            } catch (err) {
+                console.error(`[plugin:${pluginName}] Hook ${hookName} failed:`, err.message);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Get the list of all registered plugins with their metadata.
+     */
+    getPluginList() {
+        return Array.from(this.plugins.entries()).map(([name, p]) => ({
+            name,
+            version: p.manifest.version,
+            description: p.manifest.description || '',
+            enabled: p.enabled,
+            hooks: p.manifest.hooks || []
+        }));
+    }
+
+    /**
+     * Enable a previously disabled plugin.
+     */
+    enablePlugin(name) {
+        const plugin = this.plugins.get(name);
+        if (!plugin) return false;
+        plugin.enabled = true;
+        return true;
+    }
+
+    /**
+     * Disable a plugin (prevents its hooks from being called).
+     */
+    disablePlugin(name) {
+        const plugin = this.plugins.get(name);
+        if (!plugin) return false;
+        plugin.enabled = false;
+        return true;
+    }
+
+    /**
+     * Remove a plugin entirely.
+     */
+    removePlugin(name) {
+        const plugin = this.plugins.get(name);
+        if (!plugin) return false;
+
+        // Remove all hook registrations for this plugin
+        for (const [hookName, handlers] of this.hooks) {
+            this.hooks.set(hookName,
+                handlers.filter(h => h.pluginName !== name)
+            );
+        }
+
+        this.plugins.delete(name);
+        return true;
+    }
+
+    /**
+     * Get the PluginAPI instance for a given plugin (for testing).
+     */
+    getPluginAPI(name) {
+        const plugin = this.plugins.get(name);
+        return plugin ? plugin.api : null;
+    }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Object.assign(module.exports || {}, { PluginAPI, PluginManager });
+}
+
 // AppState class - manages application state
 class AppState {
     constructor() {

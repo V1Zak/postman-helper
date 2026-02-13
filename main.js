@@ -189,3 +189,55 @@ ipcMain.handle('clear-autosave', async () => {
     return { success: false, error: error.message }
   }
 })
+
+// ===== Feature 17: Plugin System =====
+const PLUGINS_DIR = path.join(require('os').homedir(), '.postman-helper', 'plugins')
+
+ipcMain.handle('list-plugins', async () => {
+  try {
+    if (!fs.existsSync(PLUGINS_DIR)) return { success: true, plugins: [] }
+    const entries = fs.readdirSync(PLUGINS_DIR, { withFileTypes: true })
+    const dirs = entries
+      .filter(d => d.isDirectory())
+      .map(d => path.join(PLUGINS_DIR, d.name))
+    return { success: true, plugins: dirs }
+  } catch (error) {
+    return { success: false, error: error.message, plugins: [] }
+  }
+})
+
+ipcMain.handle('read-plugin-manifest', async (event, dir) => {
+  try {
+    const resolved = path.resolve(dir)
+    // Security: ensure path is within plugins directory
+    if (!resolved.startsWith(path.resolve(PLUGINS_DIR))) {
+      return { success: false, error: 'Invalid plugin path' }
+    }
+    const manifestPath = path.join(resolved, 'manifest.json')
+    if (!fs.existsSync(manifestPath)) {
+      return { success: false, error: 'manifest.json not found' }
+    }
+    const content = fs.readFileSync(manifestPath, 'utf-8')
+    const manifest = JSON.parse(content)
+    return { success: true, manifest }
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('load-plugin', async (event, dir, mainFile) => {
+  try {
+    const resolved = path.resolve(dir, mainFile)
+    // Security: ensure path is within plugins directory
+    if (!resolved.startsWith(path.resolve(PLUGINS_DIR))) {
+      return { success: false, error: 'Invalid plugin path' }
+    }
+    if (!fs.existsSync(resolved)) {
+      return { success: false, error: 'Plugin main file not found' }
+    }
+    const source = fs.readFileSync(resolved, 'utf-8')
+    return { success: true, source }
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
+})
