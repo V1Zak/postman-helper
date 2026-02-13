@@ -3500,6 +3500,8 @@ class PostmanHelperApp {
                     `).join('')}
                     <button id="addEnvBtn" style="margin-top:8px; font-size:12px; padding:6px 12px;">+ Add Environment</button>
                     <button id="importEnvBtn" style="margin-top:4px; font-size:12px; padding:6px 12px;">Import from Postman</button>
+                    <button id="exportCurrentEnvBtn" style="margin-top:4px; font-size:12px; padding:6px 12px;">Export Current</button>
+                    <button id="exportAllEnvBtn" style="margin-top:4px; font-size:12px; padding:6px 12px;">Export All</button>
                 </div>
                 <div style="padding:16px; flex:1; overflow-y:auto;">
                     ${editingEnvName ? this.renderEnvEditor(editingEnvName) : '<div class="empty-state" style="padding:20px;">Select or create an environment</div>'}
@@ -3556,6 +3558,24 @@ class PostmanHelperApp {
                         editingEnvName = importedName;
                         render();
                     }
+                });
+            }
+
+            const exportCurrentEnvBtn = panel.querySelector('#exportCurrentEnvBtn');
+            if (exportCurrentEnvBtn) {
+                exportCurrentEnvBtn.addEventListener('click', () => {
+                    if (editingEnvName) {
+                        this.exportEnvironment(editingEnvName);
+                    } else {
+                        this.showToast('Select an environment to export');
+                    }
+                });
+            }
+
+            const exportAllEnvBtn = panel.querySelector('#exportAllEnvBtn');
+            if (exportAllEnvBtn) {
+                exportAllEnvBtn.addEventListener('click', () => {
+                    this.exportAllEnvironments();
                 });
             }
 
@@ -3651,20 +3671,18 @@ class PostmanHelperApp {
 
             const data = JSON.parse(result.content);
 
-            // Validate: must have values array
+            // Detect format: multi-env bundle
+            if (data._type === 'postman_helper_environments' && data.environments) {
+                return this.importMultipleEnvironments(data.environments);
+            }
+
+            // Single Postman environment: must have values array
             if (!data.values || !Array.isArray(data.values)) {
                 this.showToast('Invalid environment file: missing values array');
                 return null;
             }
 
             const name = data.name || 'Imported Environment';
-
-            // Check for duplicate name, append suffix if needed
-            let finalName = name;
-            let counter = 1;
-            while (this.state.environments.find(e => e.name === finalName)) {
-                finalName = `${name} (${counter++})`;
-            }
 
             // Convert Postman format: [{key, value, enabled}] → {key: value}
             const variables = {};
@@ -3674,15 +3692,156 @@ class PostmanHelperApp {
                 }
             }
 
-            this.state.environments.push({ name: finalName, variables });
+            // Check for name conflict
+            const existing = this.state.environments.find(e => e.name === name);
+            if (existing) {
+                return this.resolveEnvironmentConflict(name, variables, existing);
+            }
+
+            this.state.environments.push({ name, variables });
             this.updateEnvironmentSelector();
             this.triggerAutoSave();
-            this.showToast(`Environment "${finalName}" imported (${Object.keys(variables).length} variables)`);
-            return finalName;
+            this.showToast(`Environment "${name}" imported (${Object.keys(variables).length} variables)`);
+            return name;
         } catch (err) {
             console.error('Environment import error:', err);
             this.showToast('Failed to import environment file');
             return null;
+        }
+    }
+
+    resolveEnvironmentConflict(name, newVars, existingEnv) {
+        return new Promise((resolve) => {
+            const message = `Environment "${name}" already exists.\n\nOK = Merge variables (existing values kept on conflict)\nCancel = Import as new with different name`;
+            DialogSystem.showConfirm(message, (merge) => {
+                if (merge) {
+                    // Merge: new vars added, existing vars NOT overwritten
+                    Object.entries(newVars).forEach(([key, value]) => {
+                        if (!(key in existingEnv.variables)) {
+                            existingEnv.variables[key] = value;
+                        }
+                    });
+                    this.showToast(`Merged into "${name}"`);
+                } else {
+                    // Rename and add as new
+                    let counter = 2;
+                    let newName = `${name} (${counter})`;
+                    while (this.state.environments.some(e => e.name === newName)) {
+                        counter++;
+                        newName = `${name} (${counter})`;
+                    }
+                    this.state.environments.push({ name: newName, variables: newVars });
+                    this.showToast(`Imported as "${newName}"`);
+                }
+                this.updateEnvironmentSelector();
+                this.triggerAutoSave();
+                resolve(name);
+            });
+        });
+    }
+
+    async importMultipleEnvironments(envArray) {
+        let imported = 0;
+        for (const envData of envArray) {
+            const name = envData.name || `Environment ${imported + 1}`;
+            const variables = {};
+            if (envData.values) {
+                envData.values.forEach(v => {
+                    if (v.key && v.enabled !== false) { variables[v.key] = v.value || ''; }
+                });
+            } else if (envData.variables) {
+                Object.assign(variables, envData.variables);
+            }
+
+            const existing = this.state.environments.find(e => e.name === name);
+            if (existing) {
+                // Auto-merge for bulk import
+                Object.entries(variables).forEach(([key, value]) => {
+                    if (!(key in existing.variables)) { existing.variables[key] = value; }
+                });
+            } else {
+                this.state.environments.push({ name, variables });
+            }
+            imported++;
+        }
+
+        this.updateEnvironmentSelector();
+        this.triggerAutoSave();
+        this.showToast(`Imported ${imported} environment(s)`);
+        return this.state.environments.length > 0 ? this.state.environments[this.state.environments.length - 1].name : null;
+    }
+
+    async exportEnvironment(envName) {
+        const env = envName
+            ? this.state.environments.find(e => e.name === envName)
+            : this.state.environments.find(e => e.name === this.state.activeEnvironment);
+
+        if (!env) {
+            this.showToast('No environment selected to export');
+            return;
+        }
+
+        const postmanEnv = {
+            name: env.name,
+            values: Object.entries(env.variables || {}).map(([key, value]) => ({
+                key: key,
+                value: String(value),
+                type: 'default',
+                enabled: true
+            })),
+            _postman_variable_scope: 'environment',
+            _postman_exported_at: new Date().toISOString(),
+            _postman_exported_using: 'PostmanHelper/1.98'
+        };
+
+        try {
+            const content = JSON.stringify(postmanEnv, null, 2);
+            const result = await window.electronAPI.saveFile({
+                defaultPath: `${env.name}.postman_environment.json`,
+                filters: [{ name: 'JSON Files', extensions: ['json'] }],
+                content: content
+            });
+
+            if (result.success) {
+                this.showToast(`Environment "${env.name}" exported to ${result.path}`);
+            }
+        } catch (error) {
+            console.error('Environment export error:', error);
+            this.showToast('Error exporting environment');
+        }
+    }
+
+    async exportAllEnvironments() {
+        if (this.state.environments.length === 0) {
+            this.showToast('No environments to export');
+            return;
+        }
+
+        const exportData = {
+            _type: 'postman_helper_environments',
+            _version: 1,
+            environments: this.state.environments.map(env => ({
+                name: env.name,
+                values: Object.entries(env.variables || {}).map(([key, value]) => ({
+                    key, value: String(value), type: 'default', enabled: true
+                }))
+            }))
+        };
+
+        try {
+            const content = JSON.stringify(exportData, null, 2);
+            const result = await window.electronAPI.saveFile({
+                defaultPath: 'environments.json',
+                filters: [{ name: 'JSON Files', extensions: ['json'] }],
+                content: content
+            });
+
+            if (result.success) {
+                this.showToast(`${this.state.environments.length} environment(s) exported`);
+            }
+        } catch (error) {
+            console.error('Environment export error:', error);
+            this.showToast('Error exporting environments');
         }
     }
 
