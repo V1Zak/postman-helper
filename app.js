@@ -15,6 +15,54 @@ Request = class {
         this.body = body || '';
         this.description = description || '';
         this.events = events || { prerequest: '', test: '' };
+        this._history = [];
+        this._maxHistoryDepth = 20;
+    }
+
+    takeSnapshot() {
+        const snapshot = {
+            timestamp: new Date().toISOString(),
+            name: this.name,
+            method: this.method,
+            url: this.url,
+            headers: JSON.parse(JSON.stringify(this.headers || {})),
+            body: this.body || '',
+            tests: this.tests || '',
+            description: this.description || ''
+        };
+        // Don't store duplicate if nothing changed since last snapshot
+        if (this._history.length > 0) {
+            const last = this._history[0];
+            if (last.method === snapshot.method
+                && last.url === snapshot.url
+                && JSON.stringify(last.headers) === JSON.stringify(snapshot.headers)
+                && last.body === snapshot.body
+                && last.tests === snapshot.tests
+                && last.description === snapshot.description) {
+                return;
+            }
+        }
+        this._history.unshift(snapshot);
+        if (this._history.length > this._maxHistoryDepth) {
+            this._history.pop();
+        }
+    }
+
+    getHistory() {
+        return this._history;
+    }
+
+    restoreVersion(index) {
+        const snapshot = this._history[index];
+        if (!snapshot) return false;
+        this.takeSnapshot(); // Save current state before restoring
+        this.method = snapshot.method;
+        this.url = snapshot.url;
+        this.headers = JSON.parse(JSON.stringify(snapshot.headers));
+        this.body = snapshot.body;
+        this.tests = snapshot.tests;
+        this.description = snapshot.description;
+        return true;
     }
 };
 
@@ -1003,6 +1051,76 @@ ${bodyContent}
     }
 }
 
+// DiffUtil — simple line-by-line diff utility for version history
+class DiffUtil {
+    /**
+     * Compare two text strings line by line.
+     * Returns array of { type: 'same'|'added'|'removed', line: string }
+     */
+    static diffLines(oldText, newText) {
+        const oldLines = (oldText || '').split('\n');
+        const newLines = (newText || '').split('\n');
+        const result = [];
+        const maxLen = Math.max(oldLines.length, newLines.length);
+        for (let i = 0; i < maxLen; i++) {
+            const oldLine = i < oldLines.length ? oldLines[i] : undefined;
+            const newLine = i < newLines.length ? newLines[i] : undefined;
+            if (oldLine === newLine) {
+                result.push({ type: 'same', line: oldLine });
+            } else if (oldLine === undefined) {
+                result.push({ type: 'added', line: newLine });
+            } else if (newLine === undefined) {
+                result.push({ type: 'removed', line: oldLine });
+            } else {
+                result.push({ type: 'removed', line: oldLine });
+                result.push({ type: 'added', line: newLine });
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Compare two request snapshots field by field.
+     * Returns { url, method, headers, body, tests, description } each with old/new/changed.
+     */
+    static diffRequest(snapshotA, snapshotB) {
+        return {
+            method: {
+                old: snapshotA.method || 'GET',
+                new: snapshotB.method || 'GET',
+                changed: (snapshotA.method || 'GET') !== (snapshotB.method || 'GET')
+            },
+            url: {
+                old: snapshotA.url || '',
+                new: snapshotB.url || '',
+                changed: (snapshotA.url || '') !== (snapshotB.url || '')
+            },
+            headers: {
+                old: JSON.stringify(snapshotA.headers || {}, null, 2),
+                new: JSON.stringify(snapshotB.headers || {}, null, 2),
+                changed: JSON.stringify(snapshotA.headers || {}) !== JSON.stringify(snapshotB.headers || {})
+            },
+            body: {
+                diff: DiffUtil.diffLines(snapshotA.body || '', snapshotB.body || ''),
+                changed: (snapshotA.body || '') !== (snapshotB.body || '')
+            },
+            tests: {
+                diff: DiffUtil.diffLines(snapshotA.tests || '', snapshotB.tests || ''),
+                changed: (snapshotA.tests || '') !== (snapshotB.tests || '')
+            },
+            description: {
+                old: snapshotA.description || '',
+                new: snapshotB.description || '',
+                changed: (snapshotA.description || '') !== (snapshotB.description || '')
+            }
+        };
+    }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Object.assign(module.exports || {}, { DiffUtil });
+}
+
 // AppState class - manages application state
 class AppState {
     constructor() {
@@ -1387,6 +1505,9 @@ class PostmanHelperApp {
     }
 
     switchTab(tabName) {
+        // Close history panel when switching tabs
+        this.closeHistory();
+
         // Hide all tab panes
         document.querySelectorAll('.tab-pane').forEach(pane => {
             pane.style.display = 'none';
@@ -1496,6 +1617,7 @@ class PostmanHelperApp {
                 <button id="saveRequestBtn">Save Request</button>
                 <button id="deleteRequestBtn" class="secondary">Delete Request</button>
                 <button id="duplicateRequestBtn" class="secondary">Duplicate</button>
+                <button id="showHistoryBtn" class="secondary" title="View version history">History</button>
             </div>
         `;
 
@@ -1503,6 +1625,7 @@ class PostmanHelperApp {
         document.getElementById('saveRequestBtn').addEventListener('click', () => this.saveRequest());
         document.getElementById('deleteRequestBtn').addEventListener('click', () => this.deleteRequest());
         document.getElementById('duplicateRequestBtn').addEventListener('click', () => this.duplicateRequest());
+        document.getElementById('showHistoryBtn').addEventListener('click', () => this.showHistory());
         document.getElementById('addRequestHeaderBtn').addEventListener('click', () => this.addRequestHeader());
 
         // Set up Send button
@@ -2572,6 +2695,11 @@ class PostmanHelperApp {
     saveRequest() {
         if (!this.state.currentRequest || !this.state.currentCollection) return;
 
+        // Take a version history snapshot before overwriting fields
+        if (this.state.currentRequest.takeSnapshot) {
+            this.state.currentRequest.takeSnapshot();
+        }
+
         // 1. Capture raw user inputs
         const name = document.getElementById('requestName').value;
         const method = document.getElementById('requestMethod').value;
@@ -2701,6 +2829,11 @@ class PostmanHelperApp {
 
     saveTests() {
         if (!this.state.currentRequest) return;
+
+        // Take a version history snapshot before overwriting tests
+        if (this.state.currentRequest.takeSnapshot) {
+            this.state.currentRequest.takeSnapshot();
+        }
 
         const tests = document.getElementById('requestTests').value;
         this.state.currentRequest.tests = tests;
@@ -4368,6 +4501,218 @@ class PostmanHelperApp {
         return (bytes / 1048576).toFixed(1) + ' MB';
     }
 
+    // ===== Version History UI =====
+
+    showHistory() {
+        const req = this.state.currentRequest;
+        if (!req) {
+            this.showToast('No request selected');
+            return;
+        }
+        if (!req._history || req._history.length === 0) {
+            this.showToast('No history for this request. Save a request to start tracking changes.');
+            return;
+        }
+
+        const panel = document.getElementById('historyPanel');
+        const list = document.getElementById('historyList');
+        const diffContainer = document.getElementById('historyDiff');
+        panel.style.display = 'block';
+
+        // Render history list
+        list.innerHTML = req._history.map((snapshot, i) => {
+            const date = new Date(snapshot.timestamp);
+            const timeStr = date.toLocaleString();
+            const versionNum = req._history.length - i;
+            return `<div class="history-item" data-index="${i}">
+                <div>
+                    <span class="version-label">v${versionNum}</span>
+                    <span class="version-time">${this.escapeHtml(timeStr)}</span>
+                </div>
+                <button class="restore-btn" data-restore-index="${i}" title="Restore this version">Restore</button>
+            </div>`;
+        }).join('');
+
+        // Clear diff area
+        diffContainer.innerHTML = '<div class="diff-no-changes">Select a version to compare with current</div>';
+
+        // Click handler: show diff between selected version and current state
+        list.querySelectorAll('.history-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                if (e.target.classList.contains('restore-btn')) return;
+                const idx = parseInt(item.dataset.index);
+                this.showDiff(req, idx);
+                list.querySelectorAll('.history-item').forEach(el => el.classList.remove('selected'));
+                item.classList.add('selected');
+            });
+        });
+
+        // Restore button handlers
+        list.querySelectorAll('.restore-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.dataset.restoreIndex);
+                this.restoreVersion(idx);
+            });
+        });
+
+        // Close button
+        document.getElementById('closeHistoryBtn').onclick = () => {
+            panel.style.display = 'none';
+        };
+    }
+
+    showDiff(request, historyIndex) {
+        const snapshot = request._history[historyIndex];
+        if (!snapshot) return;
+
+        const current = {
+            method: request.method || 'GET',
+            url: request.url || '',
+            headers: request.headers || {},
+            body: request.body || '',
+            tests: request.tests || '',
+            description: request.description || ''
+        };
+
+        const diff = DiffUtil.diffRequest(snapshot, current);
+        const diffContainer = document.getElementById('historyDiff');
+
+        let html = '<div class="diff-section"><div class="diff-section-title">Changes: Version &rarr; Current</div>';
+
+        // Check if anything changed at all
+        const anyChanged = diff.method.changed || diff.url.changed || diff.headers.changed
+            || diff.body.changed || diff.tests.changed || diff.description.changed;
+
+        if (!anyChanged) {
+            html += '<div class="diff-no-changes">No differences found</div>';
+        } else {
+            // Method
+            if (diff.method.changed) {
+                html += '<div class="diff-section-title">Method</div>';
+                html += `<div class="diff-field-change diff-field-old">- ${this.escapeHtml(diff.method.old)}</div>`;
+                html += `<div class="diff-field-change diff-field-new">+ ${this.escapeHtml(diff.method.new)}</div>`;
+            }
+            // URL
+            if (diff.url.changed) {
+                html += '<div class="diff-section-title">URL</div>';
+                html += `<div class="diff-field-change diff-field-old">- ${this.escapeHtml(diff.url.old)}</div>`;
+                html += `<div class="diff-field-change diff-field-new">+ ${this.escapeHtml(diff.url.new)}</div>`;
+            }
+            // Description
+            if (diff.description.changed) {
+                html += '<div class="diff-section-title">Description</div>';
+                html += `<div class="diff-field-change diff-field-old">- ${this.escapeHtml(diff.description.old || '(empty)')}</div>`;
+                html += `<div class="diff-field-change diff-field-new">+ ${this.escapeHtml(diff.description.new || '(empty)')}</div>`;
+            }
+            // Headers
+            if (diff.headers.changed) {
+                html += '<div class="diff-section-title">Headers</div>';
+                const headerDiff = DiffUtil.diffLines(diff.headers.old, diff.headers.new);
+                html += this.renderLineDiff(headerDiff);
+            }
+            // Body
+            if (diff.body.changed) {
+                html += '<div class="diff-section-title">Body</div>';
+                html += this.renderLineDiff(diff.body.diff);
+            }
+            // Tests
+            if (diff.tests.changed) {
+                html += '<div class="diff-section-title">Tests</div>';
+                html += this.renderLineDiff(diff.tests.diff);
+            }
+        }
+
+        html += '</div>';
+        diffContainer.innerHTML = html;
+    }
+
+    renderLineDiff(diffLines) {
+        if (!diffLines || diffLines.length === 0) return '';
+        return diffLines.map(d => {
+            const cls = d.type === 'added' ? 'diff-added'
+                : d.type === 'removed' ? 'diff-removed'
+                : 'diff-same';
+            return `<div class="diff-line ${cls}">${this.escapeHtml(d.line || '')}</div>`;
+        }).join('');
+    }
+
+    restoreVersion(historyIndex) {
+        const req = this.state.currentRequest;
+        if (!req) return;
+
+        DialogSystem.showConfirm(
+            'Restore this version? Current state will be saved to history first.',
+            (confirmed) => {
+                if (confirmed) {
+                    const success = req.restoreVersion(historyIndex);
+                    if (success) {
+                        this.updateTabContent();
+                        this.switchTab('request');
+                        this.state.markAsChanged();
+                        this.showToast('Version restored');
+                        // Refresh history panel
+                        this.showHistory();
+                    } else {
+                        this.showToast('Failed to restore version');
+                    }
+                }
+            }
+        );
+    }
+
+    closeHistory() {
+        const panel = document.getElementById('historyPanel');
+        if (panel) panel.style.display = 'none';
+    }
+
+    // ===== Version History Persistence Helpers =====
+
+    collectRequestHistory() {
+        const history = {};
+        const traverse = (requests, prefix) => {
+            for (const req of requests) {
+                if (req._history && req._history.length > 0) {
+                    history[`${prefix}:${req.name}`] = req._history;
+                }
+            }
+        };
+        const traverseFolders = (folders, prefix) => {
+            for (const folder of folders) {
+                traverse(folder.requests || [], `${prefix}/f:${folder.name}`);
+                traverseFolders(folder.folders || [], `${prefix}/f:${folder.name}`);
+            }
+        };
+        this.state.collections.forEach((col, ci) => {
+            traverse(col.requests || [], `c${ci}`);
+            traverseFolders(col.folders || [], `c${ci}`);
+        });
+        return history;
+    }
+
+    restoreRequestHistory(historyMap) {
+        if (!historyMap || typeof historyMap !== 'object') return;
+        const traverse = (requests, prefix) => {
+            for (const req of requests) {
+                const key = `${prefix}:${req.name}`;
+                if (historyMap[key]) {
+                    req._history = historyMap[key];
+                    if (!req._maxHistoryDepth) req._maxHistoryDepth = 20;
+                }
+            }
+        };
+        const traverseFolders = (folders, prefix) => {
+            for (const folder of folders) {
+                traverse(folder.requests || [], `${prefix}/f:${folder.name}`);
+                traverseFolders(folder.folders || [], `${prefix}/f:${folder.name}`);
+            }
+        };
+        this.state.collections.forEach((col, ci) => {
+            traverse(col.requests || [], `c${ci}`);
+            traverseFolders(col.folders || [], `c${ci}`);
+        });
+    }
+
     // ===== Feature 4: Auto-save & Persistence =====
 
     triggerAutoSave() {
@@ -4389,6 +4734,7 @@ class PostmanHelperApp {
                 environments: this.state.environments,
                 activeEnvironment: this.state.activeEnvironment,
                 inheritance: this.state.inheritanceManager.toJSON ? this.state.inheritanceManager.toJSON() : null,
+                requestHistory: this.collectRequestHistory(),
                 settings: {
                     darkMode: this.state.darkMode,
                     autoSave: this.state.autoSave,
@@ -4466,6 +4812,11 @@ class PostmanHelperApp {
                 collection.importFromJSON(data.collection);
                 this.state.collections = [collection];
                 this.state.currentCollection = collection;
+            }
+
+            // Restore version history for all requests
+            if (data.requestHistory) {
+                this.restoreRequestHistory(data.requestHistory);
             }
 
             if (this.state.currentCollection) {

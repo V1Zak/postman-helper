@@ -1184,6 +1184,100 @@
             line-height: 1;
         }
 
+        /* ===== Version History Panel ===== */
+        .history-panel {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 420px;
+            max-width: 50%;
+            background: var(--bg-secondary);
+            border-left: 2px solid var(--border);
+            z-index: 50;
+            overflow-y: auto;
+            padding: 16px;
+            box-shadow: -4px 0 12px rgba(0,0,0,0.2);
+        }
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        .history-header h3 { margin: 0; font-size: 15px; }
+        .history-list {
+            max-height: 220px;
+            overflow-y: auto;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 12px;
+        }
+        .history-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .history-item:hover { background: var(--bg-tertiary); }
+        .history-item.selected { background: var(--accent); color: white; }
+        .history-item .version-label { font-weight: 600; margin-right: 8px; }
+        .history-item .version-time { font-size: 11px; color: var(--text-secondary); }
+        .history-item.selected .version-time { color: rgba(255,255,255,0.8); }
+        .history-item .restore-btn {
+            font-size: 11px;
+            padding: 2px 8px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            cursor: pointer;
+            color: var(--text-primary);
+        }
+        .history-item .restore-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
+        .history-diff { font-size: 13px; }
+        .diff-section { margin-bottom: 12px; }
+        .diff-section-title {
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            padding: 4px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .diff-field-change {
+            font-family: var(--font-mono, monospace);
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 3px;
+            margin-bottom: 4px;
+        }
+        .diff-field-old { background: rgba(200, 0, 0, 0.12); color: #f44336; }
+        .diff-field-new { background: rgba(0, 200, 0, 0.12); color: #4caf50; }
+        .diff-line {
+            font-family: var(--font-mono, monospace);
+            font-size: 12px;
+            padding: 1px 8px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .diff-added { background: rgba(0, 200, 0, 0.12); color: #4caf50; }
+        .diff-added::before { content: '+ '; }
+        .diff-removed { background: rgba(200, 0, 0, 0.12); color: #f44336; }
+        .diff-removed::before { content: '- '; }
+        .diff-same { color: var(--text-secondary); }
+        .diff-same::before { content: '  '; }
+        .diff-no-changes {
+            color: var(--text-secondary);
+            font-style: italic;
+            padding: 8px;
+            text-align: center;
+        }
+
         /* ===== Context Menu ===== */
         .context-menu {
             position: fixed;
@@ -1709,6 +1803,18 @@
                         Select a request to view and edit tests
                     </div>
                 </div>
+            </div>
+
+            <!-- Version History Panel (slide-in from right) -->
+            <div id="historyPanel" class="history-panel" style="display: none;">
+                <div class="history-header">
+                    <h3>Version History</h3>
+                    <button id="closeHistoryBtn" class="btn-sm" title="Close history panel">Close</button>
+                </div>
+                <div id="historyList" class="history-list">
+                    <div class="empty-state" style="padding: 16px;">No versions saved yet. Save a request to start tracking history.</div>
+                </div>
+                <div id="historyDiff" class="history-diff"></div>
             </div>
         </div>
     </div>

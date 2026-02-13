@@ -10,8 +10,55 @@ class PostmanRequest {
         this.description = description || '';
         this.events = events || { prerequest: '', test: '' };
         this.uuid = this.generateUUID();
+        this._history = [];
+        this._maxHistoryDepth = 20;
     }
-    
+
+    takeSnapshot() {
+        const snapshot = {
+            timestamp: new Date().toISOString(),
+            name: this.name,
+            method: this.method,
+            url: this.url,
+            headers: JSON.parse(JSON.stringify(this.headers || {})),
+            body: this.body || '',
+            tests: this.tests || '',
+            description: this.description || ''
+        };
+        if (this._history.length > 0) {
+            const last = this._history[0];
+            if (last.method === snapshot.method
+                && last.url === snapshot.url
+                && JSON.stringify(last.headers) === JSON.stringify(snapshot.headers)
+                && last.body === snapshot.body
+                && last.tests === snapshot.tests
+                && last.description === snapshot.description) {
+                return;
+            }
+        }
+        this._history.unshift(snapshot);
+        if (this._history.length > this._maxHistoryDepth) {
+            this._history.pop();
+        }
+    }
+
+    getHistory() {
+        return this._history;
+    }
+
+    restoreVersion(index) {
+        const snapshot = this._history[index];
+        if (!snapshot) return false;
+        this.takeSnapshot();
+        this.method = snapshot.method;
+        this.url = snapshot.url;
+        this.headers = JSON.parse(JSON.stringify(snapshot.headers));
+        this.body = snapshot.body;
+        this.tests = snapshot.tests;
+        this.description = snapshot.description;
+        return true;
+    }
+
     generateUUID() {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
             const r = Math.random() * 16 | 0;
