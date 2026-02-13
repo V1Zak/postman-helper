@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "description": "Postman Helper - A Mac OS app for creating and managing Postman API requests",
   "main": "main.js",
+  "bin": {
+    "postman-helper": "./cli.js"
+  },
   "scripts": {
     "start": "electron . --no-sandbox",
     "test": "node --test 'tests/test_*.js'",
+    "cli": "node cli.js",
     "package": "electron-packager . --platform=darwin --arch=x64 --out=dist"
   },
   "keywords": [
