@@ -2586,6 +2586,8 @@ class PostmanHelperApp {
         this.state = new AppState();
         this.state.loadSettings();
         this._autoSaveTimer = null;
+        this._expandedFolders = new Set(); // Track expanded tree node IDs
+        this._treeScrollTop = 0; // Preserve scroll position across re-renders
         this.state._onChanged = () => this.triggerAutoSave();
         this.initUI();
         this.setupEventListeners();
@@ -3781,6 +3783,11 @@ class PostmanHelperApp {
     updateCollectionTree() {
         const collectionTree = document.getElementById('collectionTree');
 
+        // Save scroll position before re-render
+        if (collectionTree) {
+            this._treeScrollTop = collectionTree.scrollTop;
+        }
+
         if (this.state.collections.length === 0) {
             collectionTree.innerHTML = '<div class="empty-state">No collections yet</div>';
             return;
@@ -3850,14 +3857,19 @@ class PostmanHelperApp {
 
         collectionTree.innerHTML = html;
 
-        // Set up collapsible functionality
+        // Set up collapsible functionality (respects _expandedFolders)
         this.setupCollapsibleTree();
 
-        // Set up click handlers for requests, folders, and collections
+        // Set up delegated click handler for tree (replaces per-item handlers)
         this.setupTreeClickHandlers();
 
         // Set up drag and drop for the new tree elements
         this.setupDragAndDrop();
+
+        // Restore scroll position after re-render
+        if (collectionTree && this._treeScrollTop) {
+            collectionTree.scrollTop = this._treeScrollTop;
+        }
     }
 
     renderCollapsibleFolder(folder, depth = 0) {
@@ -3917,51 +3929,37 @@ class PostmanHelperApp {
     }
 
     setupCollapsibleTree() {
-        // Set up toggle functionality for all collapsible elements
-        document.querySelectorAll('.tree-toggle').forEach(toggle => {
-            toggle.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent triggering folder click
-                
-                const targetId = toggle.getAttribute('data-target');
-                const targetElement = document.getElementById(targetId);
-                
-                if (targetElement) {
-                    const isCollapsed = targetElement.style.display === 'none';
-                    
-                    if (isCollapsed) {
-                        targetElement.style.display = 'block';
-                        toggle.textContent = '▼';
-                    } else {
-                        targetElement.style.display = 'none';
-                        toggle.textContent = '▶';
-                    }
-                }
-            });
-        });
-        
-        // Initially expand active collection, collapse others
+        // Restore expand/collapse state from _expandedFolders Set.
+        // Active collection is expanded by default on first view.
         document.querySelectorAll('.tree-children').forEach(children => {
+            const nodeId = children.id;
+            if (!nodeId) return;
+
             const colIdx = children.dataset.collectionIndex;
             const isActiveCollection = colIdx !== undefined &&
                 this.state.collections[parseInt(colIdx)] === this.state.currentCollection;
-            // Collection-level children: expand if active, collapse if not
-            if (children.id && children.id.startsWith('collection-')) {
-                if (isActiveCollection) {
-                    children.style.display = 'block';
-                    const toggle = document.querySelector(`.tree-toggle[data-target="${children.id}"]`);
-                    if (toggle) toggle.textContent = '▼';
-                } else {
-                    children.style.display = 'none';
-                    const toggle = document.querySelector(`.tree-toggle[data-target="${children.id}"]`);
-                    if (toggle) toggle.textContent = '▶';
-                }
+
+            // Determine if this node should be expanded:
+            // - If we have a stored state in _expandedFolders, use it
+            // - Otherwise: active collection defaults expanded, everything else collapsed
+            let shouldExpand;
+            if (this._expandedFolders.has(nodeId)) {
+                shouldExpand = true;
+            } else if (nodeId.startsWith('collection-') && isActiveCollection && !this._expandedFolders.has('_init_' + nodeId)) {
+                // First time seeing this active collection — expand it and record
+                shouldExpand = true;
+                this._expandedFolders.add(nodeId);
+                this._expandedFolders.add('_init_' + nodeId);
             } else {
-                // Folders: collapsed by default
-                children.style.display = 'none';
-                const toggle = document.querySelector(`.tree-toggle[data-target="${children.id}"]`);
-                if (toggle) toggle.textContent = '▶';
+                shouldExpand = false;
             }
+
+            children.style.display = shouldExpand ? 'block' : 'none';
+            const toggle = document.querySelector(`.tree-toggle[data-target="${nodeId}"]`);
+            if (toggle) toggle.textContent = shouldExpand ? '\u25BC' : '\u25B6';
         });
+
+        // NOTE: Toggle click events are handled via event delegation in setupTreeClickHandlers()
     }
     
     switchToCollectionByIndex(index) {
@@ -3977,26 +3975,53 @@ class PostmanHelperApp {
     }
 
     setupTreeClickHandlers() {
-        // Set up click handlers for collection headers
-        document.querySelectorAll('.tree-item[data-type="collection"]').forEach(item => {
-            item.addEventListener('click', (e) => {
-                if (e.target.classList.contains('tree-toggle')) return;
-                const colIdx = parseInt(item.dataset.collectionIndex);
+        const collectionTree = document.getElementById('collectionTree');
+        if (!collectionTree) return;
+
+        // Remove any existing delegated handler before adding a new one
+        if (this._treeClickHandler) {
+            collectionTree.removeEventListener('click', this._treeClickHandler);
+        }
+
+        // Single delegated click handler for all tree interactions
+        this._treeClickHandler = (e) => {
+            // --- Toggle expand/collapse ---
+            const toggle = e.target.closest('.tree-toggle');
+            if (toggle) {
+                e.stopPropagation();
+                const targetId = toggle.getAttribute('data-target');
+                const targetElement = document.getElementById(targetId);
+                if (targetElement) {
+                    const isCollapsed = targetElement.style.display === 'none';
+                    if (isCollapsed) {
+                        targetElement.style.display = 'block';
+                        toggle.textContent = '\u25BC';
+                        this._expandedFolders.add(targetId);
+                    } else {
+                        targetElement.style.display = 'none';
+                        toggle.textContent = '\u25B6';
+                        this._expandedFolders.delete(targetId);
+                    }
+                }
+                return;
+            }
+
+            // --- Collection click ---
+            const collectionItem = e.target.closest('.tree-item[data-type="collection"]');
+            if (collectionItem) {
+                const colIdx = parseInt(collectionItem.dataset.collectionIndex);
                 if (!isNaN(colIdx)) {
                     this.switchToCollectionByIndex(colIdx);
                 }
-            });
-        });
+                return;
+            }
 
-        // Set up click handlers for requests (use closest() since clicks may land on child spans)
-        document.querySelectorAll('.tree-item[data-type="request"]').forEach(item => {
-            item.addEventListener('click', (e) => {
-                const treeItem = e.target.closest('.tree-item[data-type="request"]');
-                if (!treeItem) return;
-
+            // --- Request click ---
+            const requestItem = e.target.closest('.tree-item[data-type="request"]');
+            if (requestItem) {
                 // Auto-switch collection if needed
-                const colIdxAttr = treeItem.dataset.collectionIndex ||
-                    (treeItem.closest('[data-collection-index]') || {}).dataset?.collectionIndex;
+                const colIdxAttr = requestItem.dataset.collectionIndex ||
+                    (requestItem.closest('[data-collection-index]') || {}).dataset?.collectionIndex;
                 if (colIdxAttr !== undefined) {
                     const colIdx = parseInt(colIdxAttr);
                     const col = this.state.collections[colIdx];
@@ -4007,7 +4032,7 @@ class PostmanHelperApp {
                     }
                 }
 
-                const requestName = treeItem.dataset.id;
+                const requestName = requestItem.dataset.id;
                 let request = this.state.currentCollection.requests.find(r => r.name === requestName);
 
                 // Also check in folders
@@ -4048,28 +4073,25 @@ class PostmanHelperApp {
                         switchToRequest();
                     }
                 }
-            });
-        });
+                return;
+            }
 
-        // Set up click handlers for folders
-        document.querySelectorAll('.tree-item[data-type="folder"]').forEach(item => {
-            item.addEventListener('click', (e) => {
-                // Don't trigger if click was on toggle
-                if (e.target.classList.contains('tree-toggle')) return;
-
-                const treeItem = e.target.closest('.tree-item[data-type="folder"]');
-                if (!treeItem) return;
-                const folderName = treeItem.dataset.id;
+            // --- Folder click ---
+            const folderItem = e.target.closest('.tree-item[data-type="folder"]');
+            if (folderItem) {
+                const folderName = folderItem.dataset.id;
                 const folder = this.findFolderByName(this.state.currentCollection.folders, folderName);
-
                 if (folder) {
                     this.state.setCurrentFolder(folder);
                     this.state.setCurrentRequest(null);
                     this.updateTabContent();
                     this.switchTab('request');
                 }
-            });
-        });
+                return;
+            }
+        };
+
+        collectionTree.addEventListener('click', this._treeClickHandler);
     }
 
     matchesFilters(request) {
@@ -6817,6 +6839,7 @@ class PostmanHelperApp {
                 activeEnvironment: this.state.activeEnvironment,
                 inheritance: this.state.inheritanceManager.toJSON ? this.state.inheritanceManager.toJSON() : null,
                 requestHistory: this.collectRequestHistory(),
+                expandedFolders: Array.from(this._expandedFolders).filter(id => !id.startsWith('_init_')),
                 analytics: this.analytics.toJSON(),
                 settings: {
                     darkMode: this.state.darkMode,
@@ -6911,6 +6934,17 @@ class PostmanHelperApp {
             // Restore analytics
             if (data.analytics) {
                 this.analytics.fromJSON(data.analytics);
+            }
+
+            // Restore expanded folder state
+            if (data.expandedFolders && Array.isArray(data.expandedFolders)) {
+                this._expandedFolders = new Set(data.expandedFolders);
+                // Mark collections as initialized so setupCollapsibleTree doesn't override
+                for (const id of data.expandedFolders) {
+                    if (id.startsWith('collection-')) {
+                        this._expandedFolders.add('_init_' + id);
+                    }
+                }
             }
 
             if (this.state.currentCollection) {
