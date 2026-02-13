@@ -22,13 +22,47 @@ console.log('🚀 Postman Helper starting with config:', {
     logLevel: config.logLevel
 })
 
-// Make config available globally for renderer process
+// ===== Window State Persistence =====
+const WINDOW_STATE_FILE = path.join(require('os').homedir(), '.postman-helper', 'window-state.json')
+
+function loadWindowState() {
+  try {
+    if (fs.existsSync(WINDOW_STATE_FILE)) {
+      return JSON.parse(fs.readFileSync(WINDOW_STATE_FILE, 'utf-8'))
+    }
+  } catch (e) {
+    console.error('Failed to load window state:', e.message)
+  }
+  return null
+}
+
+function saveWindowState(win) {
+  try {
+    const bounds = win.getBounds()
+    const state = {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      isMaximized: win.isMaximized(),
+      isFullScreen: win.isFullScreen()
+    }
+    const dir = path.dirname(WINDOW_STATE_FILE)
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(WINDOW_STATE_FILE, JSON.stringify(state, null, 2), 'utf-8')
+  } catch (e) {
+    console.error('Failed to save window state:', e.message)
+  }
+}
+
 let mainWindow
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+  const saved = loadWindowState()
+
+  const windowOptions = {
+    width: saved ? saved.width : 1200,
+    height: saved ? saved.height : 800,
     minWidth: 1000,
     minHeight: 700,
     webPreferences: {
@@ -37,12 +71,53 @@ function createWindow() {
       contextIsolation: true,
       enableRemoteModule: false
     }
-  })
+  }
+
+  // Restore position if saved and valid
+  if (saved && saved.x != null && saved.y != null) {
+    windowOptions.x = saved.x
+    windowOptions.y = saved.y
+  }
+
+  mainWindow = new BrowserWindow(windowOptions)
+
+  // Maximize by default on first launch, or restore previous state
+  if (saved) {
+    if (saved.isFullScreen) {
+      mainWindow.setFullScreen(true)
+    } else if (saved.isMaximized) {
+      mainWindow.maximize()
+    }
+  } else {
+    // First launch: maximize for immersive experience
+    mainWindow.maximize()
+  }
 
   mainWindow.loadFile('index.html')
   
   // Open DevTools in development
   // mainWindow.webContents.openDevTools()
+
+  // Save window state on resize, move, and close
+  const debouncedSave = (() => {
+    let timer
+    return () => {
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          saveWindowState(mainWindow)
+        }
+      }, 300)
+    }
+  })()
+
+  mainWindow.on('resize', debouncedSave)
+  mainWindow.on('move', debouncedSave)
+  mainWindow.on('close', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      saveWindowState(mainWindow)
+    }
+  })
 
   mainWindow.on('closed', function () {
     mainWindow = null
