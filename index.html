@@ -2363,6 +2363,124 @@
         .tutorial-dont-show input[type="checkbox"] {
             accent-color: var(--accent);
         }
+
+        /* ===== Responsive Layout ===== */
+
+        /* Search clear button */
+        .filter-bar {
+            position: relative;
+        }
+
+        .filter-clear-btn {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 16px;
+            cursor: pointer;
+            padding: 0 4px;
+            line-height: 1;
+            display: none;
+        }
+
+        .filter-clear-btn.visible {
+            display: block;
+        }
+
+        .filter-clear-btn:hover {
+            color: var(--text-primary);
+        }
+
+        /* Collection request count badge */
+        .collection-count {
+            display: inline-block;
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+            font-size: 10px;
+            padding: 1px 6px;
+            border-radius: 8px;
+            margin-left: 6px;
+        }
+
+        /* Method color coding */
+        .method-color-get { color: #61affe; }
+        .method-color-post { color: #49cc90; }
+        .method-color-put { color: #fca130; }
+        .method-color-patch { color: #50e3c2; }
+        .method-color-delete { color: #f93e3e; }
+        .method-color-head { color: #9012fe; }
+        .method-color-options { color: #888; }
+
+        /* Resize handle improvement */
+        .resize-handle {
+            width: 6px;
+            cursor: col-resize;
+            background: transparent;
+            position: relative;
+            z-index: 10;
+            transition: background 0.15s;
+        }
+
+        .resize-handle::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -4px;
+            right: -4px;
+            bottom: 0;
+        }
+
+        .resize-handle:hover {
+            background: var(--accent);
+            opacity: 0.4;
+        }
+
+        /* Responsive: medium screens */
+        @media (max-width: 1200px) {
+            .header-actions {
+                gap: 4px;
+            }
+            .header-actions button {
+                padding: 5px 8px;
+                font-size: 11px;
+            }
+            .header-divider {
+                margin: 0 2px;
+            }
+        }
+
+        /* Responsive: narrow screens */
+        @media (max-width: 900px) {
+            .container {
+                flex-direction: column;
+            }
+            .sidebar {
+                width: 100% !important;
+                max-width: 100%;
+                max-height: 35vh;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+            .resize-handle {
+                display: none;
+            }
+            .main-content {
+                width: 100%;
+            }
+            .header-actions {
+                flex-wrap: wrap;
+                gap: 3px;
+            }
+            .dialog-box {
+                width: 90vw;
+            }
+            .settings-panel {
+                width: 100% !important;
+            }
+        }
 </style>
 </head>
 <body>
@@ -2398,6 +2516,7 @@
                 </div>
                 <div class="filter-bar" id="filterBar">
                     <input type="text" id="filterText" placeholder="Search requests...">
+                    <button class="filter-clear-btn" id="filterClearBtn" title="Clear search">&times;</button>
                     <div class="filter-methods" id="filterMethods">
                         <button class="method-chip" data-method="GET">GET</button>
                         <button class="method-chip" data-method="POST">POST</button>
