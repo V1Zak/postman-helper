@@ -620,6 +620,58 @@
             opacity: 0.9;
         }
 
+        .dialog-select {
+            width: 100%;
+            padding: 10px 15px;
+            margin: 15px 0;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .dialog-select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-subtle);
+        }
+
+        .dialog-multi-list {
+            max-height: 250px;
+            overflow-y: auto;
+            margin: 15px 0;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+        }
+
+        .dialog-multi-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .dialog-multi-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .dialog-multi-item:last-child {
+            border-bottom: none;
+        }
+
+        .dialog-multi-item input[type="checkbox"] {
+            accent-color: var(--accent);
+        }
+
+        .toast-success { border-left: 3px solid #49cc90; }
+        .toast-error { border-left: 3px solid #f93e3e; }
+        .toast-warning { border-left: 3px solid #fca130; }
+        .toast-info { border-left: 3px solid var(--accent); }
+
         /* ===== Drag and Drop ===== */
         .tree-item.dragging {
             opacity: 0.4;
