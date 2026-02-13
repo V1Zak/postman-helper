@@ -2074,6 +2074,219 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = Object.assign(module.exports || {}, { PluginAPI, PluginManager });
 }
 
+// TutorialSystem — lightweight onboarding walkthrough for first-time users
+class TutorialSystem {
+    constructor(options = {}) {
+        this.storageKey = options.storageKey || 'postman-helper-tutorial-completed';
+        this.currentStep = 0;
+        this.overlay = null;
+        this.onComplete = options.onComplete || null;
+        this.steps = TutorialSystem.defaultSteps();
+    }
+
+    static defaultSteps() {
+        return [
+            {
+                icon: '\uD83D\uDC4B',
+                title: 'Welcome to Postman Helper',
+                body: 'A powerful tool for creating, managing, and exporting API requests for Postman. Let\u2019s walk through the basics.',
+                shortcuts: []
+            },
+            {
+                icon: '\uD83D\uDCC1',
+                title: 'Create a Collection',
+                body: 'Collections group related API requests together. Click <strong>+ Add</strong> in the sidebar or use the shortcut to create your first collection.',
+                shortcuts: ['\u2318N']
+            },
+            {
+                icon: '\uD83D\uDCE8',
+                title: 'Add a Request',
+                body: 'Click <strong>+ Request</strong> in the toolbar to add an API request. Set the method, URL, headers, and body in the request editor.',
+                shortcuts: ['\u2318N']
+            },
+            {
+                icon: '\u2699',
+                title: 'Headers, Body & Tests',
+                body: 'Use the <strong>Request</strong>, <strong>Inheritance</strong>, and <strong>Tests</strong> tabs to configure headers, body templates, and test scripts for your requests.',
+                shortcuts: []
+            },
+            {
+                icon: '\uD83D\uDE80',
+                title: 'Export & Share',
+                body: 'Click <strong>Export</strong> to save your collection as a Postman-compatible JSON file. You can also import existing collections, Swagger specs, or cURL commands.',
+                shortcuts: ['\u2318S', '\u2318O']
+            }
+        ];
+    }
+
+    shouldShow() {
+        if (typeof localStorage === 'undefined') return false;
+        return localStorage.getItem(this.storageKey) !== 'true';
+    }
+
+    markCompleted() {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(this.storageKey, 'true');
+        }
+    }
+
+    reset() {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem(this.storageKey);
+        }
+        this.currentStep = 0;
+    }
+
+    show() {
+        this.currentStep = 0;
+        this._render();
+    }
+
+    _render() {
+        // Remove existing overlay if any
+        if (this.overlay) {
+            this.overlay.remove();
+            this.overlay = null;
+        }
+
+        const step = this.steps[this.currentStep];
+        if (!step) return;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'tutorial-overlay';
+
+        const dots = this.steps.map((_, i) => {
+            let cls = 'tutorial-dot';
+            if (i === this.currentStep) cls += ' active';
+            else if (i < this.currentStep) cls += ' completed';
+            return `<span class="${cls}"></span>`;
+        }).join('');
+
+        const shortcuts = step.shortcuts.length > 0
+            ? '<div style="margin-top: 8px;">' + step.shortcuts.map(s => `<span class="tutorial-shortcut">${s}</span>`).join(' ') + '</div>'
+            : '';
+
+        const isFirst = this.currentStep === 0;
+        const isLast = this.currentStep === this.steps.length - 1;
+
+        const prevBtn = isFirst
+            ? '<button class="tutorial-skip" data-action="skip">Skip tutorial</button>'
+            : '<button class="secondary" data-action="prev">Back</button>';
+
+        const nextBtn = isLast
+            ? '<button class="primary" data-action="finish">Get Started</button>'
+            : '<button class="primary" data-action="next">Next</button>';
+
+        overlay.innerHTML = `
+            <div class="tutorial-card">
+                <span class="tutorial-icon">${step.icon}</span>
+                <h2>${step.title}</h2>
+                <p>${step.body}${shortcuts}</p>
+                <div class="tutorial-steps">${dots}</div>
+                <div class="tutorial-actions">
+                    ${prevBtn}
+                    <span style="font-size: 12px; color: var(--text-muted);">${this.currentStep + 1} / ${this.steps.length}</span>
+                    ${nextBtn}
+                </div>
+                ${isLast ? `
+                <label class="tutorial-dont-show">
+                    <input type="checkbox" data-action="dont-show" checked>
+                    Don\u2019t show again
+                </label>` : ''}
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        this.overlay = overlay;
+
+        // Fade in
+        requestAnimationFrame(() => overlay.classList.add('visible'));
+
+        // Event delegation
+        overlay.addEventListener('click', (e) => {
+            const action = e.target.dataset.action;
+            if (!action) {
+                // Click on overlay background (not card) closes tutorial
+                if (e.target === overlay) this._close(true);
+                return;
+            }
+            if (action === 'next') this._next();
+            else if (action === 'prev') this._prev();
+            else if (action === 'skip') this._close(true);
+            else if (action === 'finish') this._finish();
+        });
+
+        // Keyboard navigation
+        this._keyHandler = (e) => {
+            if (e.key === 'Escape') this._close(true);
+            else if (e.key === 'ArrowRight' || e.key === 'Enter') {
+                if (isLast) this._finish();
+                else this._next();
+            } else if (e.key === 'ArrowLeft') this._prev();
+        };
+        document.addEventListener('keydown', this._keyHandler);
+    }
+
+    _next() {
+        if (this.currentStep < this.steps.length - 1) {
+            this.currentStep++;
+            this._cleanupKeyHandler();
+            this._render();
+        }
+    }
+
+    _prev() {
+        if (this.currentStep > 0) {
+            this.currentStep--;
+            this._cleanupKeyHandler();
+            this._render();
+        }
+    }
+
+    _finish() {
+        const dontShow = this.overlay && this.overlay.querySelector('[data-action="dont-show"]');
+        if (dontShow && dontShow.checked) {
+            this.markCompleted();
+        }
+        this._close(false);
+    }
+
+    _close(markCompleted) {
+        if (markCompleted) {
+            this.markCompleted();
+        }
+        this._cleanupKeyHandler();
+        if (this.overlay) {
+            this.overlay.classList.remove('visible');
+            const el = this.overlay;
+            setTimeout(() => el.remove(), 250);
+            this.overlay = null;
+        }
+        if (typeof this.onComplete === 'function') {
+            this.onComplete();
+        }
+    }
+
+    _cleanupKeyHandler() {
+        if (this._keyHandler) {
+            document.removeEventListener('keydown', this._keyHandler);
+            this._keyHandler = null;
+        }
+    }
+
+    getStepCount() {
+        return this.steps.length;
+    }
+
+    getCurrentStep() {
+        return this.currentStep;
+    }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Object.assign(module.exports || {}, { TutorialSystem });
+}
+
 // AppState class - manages application state
 class AppState {
     constructor() {
@@ -2234,9 +2447,15 @@ class PostmanHelperApp {
         this.setupDragAndDrop();
         this.setupContextMenus();
         this.analytics = new AnalyticsCollector();
+        this.tutorial = new TutorialSystem({
+            onComplete: () => this.showToast('Tutorial complete! Start by creating a collection.', 3000, 'success')
+        });
         this.loadAutoSave();
         this.initChangeTracking();
-        // Sample data loaded via Load Sample button or first-launch prompt
+        // Show tutorial on first launch
+        if (this.tutorial.shouldShow()) {
+            setTimeout(() => this.tutorial.show(), 500);
+        }
     }
 
     initUI() {
@@ -4308,6 +4527,16 @@ class PostmanHelperApp {
                         </label>
                     </div>
                 </div>
+                <div class="settings-group">
+                    <h4>Help</h4>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Show Tutorial</div>
+                            <div class="settings-item-desc">Replay the getting started guide</div>
+                        </div>
+                        <button id="showTutorialBtn" class="secondary" style="padding: 5px 14px; font-size: 12px;">Show</button>
+                    </div>
+                </div>
             </div>
             <div class="settings-footer">
                 <button id="saveSettingsBtn">Save Settings</button>
@@ -4317,6 +4546,15 @@ class PostmanHelperApp {
 
         document.body.appendChild(settingsModal);
         document.body.appendChild(panel);
+
+        // Show Tutorial button
+        document.getElementById('showTutorialBtn').addEventListener('click', () => {
+            closeSettings();
+            setTimeout(() => {
+                this.tutorial.reset();
+                this.tutorial.show();
+            }, 350);
+        });
 
         // Live dark mode toggle preview
         document.getElementById('darkMode').addEventListener('change', (e) => {
