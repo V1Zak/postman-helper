@@ -908,7 +908,7 @@ class PostmanHelperApp {
         this.setupContextMenus();
         this.loadAutoSave();
         // this.initChangeTracking(); // TODO: Implement change tracking feature
-        // this.loadSampleData(); // Disabled due to model loading issues
+        // Sample data loaded via Load Sample button or first-launch prompt
     }
 
     initUI() {
@@ -980,6 +980,15 @@ class PostmanHelperApp {
             });
         }
         document.getElementById('settingsBtn').addEventListener('click', () => this.showSettings());
+        const loadSampleBtn = document.getElementById('loadSampleBtn');
+        if (loadSampleBtn) {
+            loadSampleBtn.addEventListener('click', () => {
+                DialogSystem.showConfirm(
+                    'Load a sample API collection? This will add a new collection without affecting existing ones.',
+                    (confirmed) => { if (confirmed) this.loadSampleData(); }
+                );
+            });
+        }
         document.getElementById('addCollectionBtn').addEventListener('click', () => this.createNewCollection());
 
         // Inheritance buttons
@@ -3983,68 +3992,114 @@ class PostmanHelperApp {
 
     // Sample Data
     loadSampleData() {
-         // Create a sample collection for demonstration
-        const sampleCollection = {
-            name: 'Sample API Collection',
-            description: 'A sample collection demonstrating Postman Helper features',
-            requests: [],
-            folders: [],
-            addRequest: function(req) { this.requests.push(req); },
-            addFolder: function(folder) { this.folders.push(folder); }
-        };
+        try {
+            // Prevent duplicate sample collections
+            if (this.state.collections.some(c => c.name === 'Sample API Collection')) {
+                this.showToast('Sample collection already exists');
+                return;
+            }
 
-        // Set up inheritance
-        this.state.inheritanceManager.setGlobalHeaders({
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        });
-        this.state.inheritanceManager.addBaseEndpoint('https://api.example.com/v1');
+            const collection = new Collection('Sample API Collection');
+            collection.description = 'A sample collection demonstrating Postman Helper features';
 
-        // Create sample requests
-         const request1 = new Request(
-             'Get Users',
-             'GET',
-             '/users',
-             {},
-             null,
-             'Get all users',
-             { prerequest: '', test: 'pm.test("Status code is 200", function() {\n    pm.response.to.have.status(200);\n});' }
-         );
+            // --- Root Requests ---
+            const getUsers = new Request(
+                'Get Users', 'GET', 'https://api.example.com/v1/users',
+                { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                '', 'Fetch all users from the API'
+            );
+            getUsers.tests = "tests['Status code is 200'] = responseCode.code === 200;\ntests['Response has data'] = responseBody.has('data');";
 
-         const request2 = new Request(
-             'Create User',
-             'POST',
-             '/users',
-             {},
-             '{\n    "name": "John Doe",\n    "email": "john@example.com"\n}',
-             'Create a new user',
-             { prerequest: '', test: 'pm.test("User created successfully", function() {\n    pm.expect(pm.response.code).to.be.oneOf([200, 201]);\n});' }
-         );
+            const createUser = new Request(
+                'Create User', 'POST', 'https://api.example.com/v1/users',
+                { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                JSON.stringify({ name: 'John Doe', email: 'john@example.com', role: 'user' }, null, 2),
+                'Create a new user account'
+            );
+            createUser.tests = "tests['Status code is 201'] = responseCode.code === 201;\ntests['User created'] = responseBody.has('id');";
 
-        // Apply inheritance to requests
-        const processedRequest1 = this.state.inheritanceManager.processRequest(request1);
-        const processedRequest2 = this.state.inheritanceManager.processRequest(request2);
+            collection.addRequest(getUsers);
+            collection.addRequest(createUser);
 
-        sampleCollection.addRequest(processedRequest1);
-        sampleCollection.addRequest(processedRequest2);
+            // --- Auth Folder ---
+            const authFolder = new Folder('Authentication');
 
-        // Create a folder with requests
-        const authFolder = new Folder('Authentication');
-         const loginRequest = new Request(
-             'Login',
-             'POST',
-             '/auth/login',
-             {},
-             '{\n    "username": "admin",\n    "password": "password"\n}',
-             'User login',
-             { prerequest: '', test: '' }
-         );
-        const processedLoginRequest = this.state.inheritanceManager.processRequest(loginRequest);
-        authFolder.addRequest(processedLoginRequest);
-        sampleCollection.addFolder(authFolder);
+            const loginReq = new Request(
+                'Login', 'POST', 'https://api.example.com/v1/auth/login',
+                { 'Content-Type': 'application/json' },
+                JSON.stringify({ email: 'admin@example.com', password: 'password123' }, null, 2),
+                'Authenticate and receive a JWT token'
+            );
+            loginReq.tests = "tests['Status code is 200'] = responseCode.code === 200;\ntests['Has token'] = responseBody.has('token');";
 
-        this.state.setCurrentCollection(sampleCollection);
-        this.updateCollectionTree();
+            const refreshReq = new Request(
+                'Refresh Token', 'POST', 'https://api.example.com/v1/auth/refresh',
+                { 'Content-Type': 'application/json', 'Authorization': 'Bearer {{refreshToken}}' },
+                '', 'Refresh an expired JWT token'
+            );
+
+            authFolder.addRequest(loginReq);
+            authFolder.addRequest(refreshReq);
+            collection.addFolder(authFolder);
+
+            // --- Users Folder ---
+            const usersFolder = new Folder('User Management');
+
+            const getUserById = new Request(
+                'Get User by ID', 'GET', 'https://api.example.com/v1/users/{{userId}}',
+                { 'Content-Type': 'application/json', 'Authorization': 'Bearer {{token}}' },
+                '', 'Fetch a specific user by their ID'
+            );
+
+            const updateUser = new Request(
+                'Update User', 'PUT', 'https://api.example.com/v1/users/{{userId}}',
+                { 'Content-Type': 'application/json', 'Authorization': 'Bearer {{token}}' },
+                JSON.stringify({ name: 'Jane Doe', role: 'admin' }, null, 2),
+                'Update user details'
+            );
+
+            const deleteUser = new Request(
+                'Delete User', 'DELETE', 'https://api.example.com/v1/users/{{userId}}',
+                { 'Authorization': 'Bearer {{token}}' },
+                '', 'Delete a user account'
+            );
+            deleteUser.tests = "tests['Status code is 204'] = responseCode.code === 204;";
+
+            usersFolder.addRequest(getUserById);
+            usersFolder.addRequest(updateUser);
+            usersFolder.addRequest(deleteUser);
+            collection.addFolder(usersFolder);
+
+            // --- Inheritance Examples ---
+            if (this.state.inheritanceManager) {
+                const im = this.state.inheritanceManager;
+                if (im.addGlobalHeader) {
+                    im.addGlobalHeader('Content-Type', 'application/json');
+                    im.addGlobalHeader('Accept', 'application/json');
+                }
+                if (im.addBaseEndpoint) {
+                    im.addBaseEndpoint('default', 'https://api.example.com/v1');
+                }
+                if (im.addBodyTemplate) {
+                    im.addBodyTemplate('Create User Template', JSON.stringify({
+                        name: '', email: '', role: 'user'
+                    }, null, 2));
+                }
+                if (im.addTestTemplate) {
+                    im.addTestTemplate('Status 200 Check',
+                        "tests['Status code is 200'] = responseCode.code === 200;");
+                }
+            }
+
+            // --- Add to state ---
+            this.state.addCollection(collection);
+            this.updateCollectionTree();
+            this.showToast('Sample collection loaded');
+
+        } catch (error) {
+            console.error('Failed to load sample data:', error);
+            this.showToast('Failed to load sample data');
+        }
     }
 }
 
