@@ -9,26 +9,28 @@
         :root {
             /* Light theme (fallback) */
             --bg-primary: #ffffff;
-            --bg-secondary: #f8f9fa;
-            --bg-tertiary: #f0f1f3;
-            --text-primary: #1a1a2e;
-            --text-secondary: #555;
-            --text-muted: #888;
+            --bg-secondary: #f7f8fa;
+            --bg-tertiary: #eef0f4;
+            --text-primary: #1e1e2e;
+            --text-secondary: #5c5c6e;
+            --text-muted: #8b8b9e;
             --accent: #FF6C37;
             --accent-hover: #e55a2b;
-            --accent-subtle: rgba(255, 108, 55, 0.12);
-            --border: #e0e0e0;
-            --border-subtle: rgba(0, 0, 0, 0.06);
-            --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
-            --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
-            --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);
+            --accent-subtle: rgba(255, 108, 55, 0.10);
+            --border: #e2e4e9;
+            --border-subtle: rgba(0, 0, 0, 0.05);
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+            --shadow-md: 0 2px 8px rgba(0,0,0,0.08);
+            --shadow-lg: 0 8px 24px rgba(0,0,0,0.10);
             --radius-sm: 6px;
             --radius-md: 8px;
             --radius-lg: 12px;
-            --transition: 0.2s ease;
-            --header-text: #ffffff;
-            --btn-secondary-bg: #6c757d;
-            --btn-secondary-hover: #5a6268;
+            --transition: 0.15s ease;
+            --header-bg: var(--bg-secondary);
+            --header-text: var(--text-primary);
+            --header-border: var(--border);
+            --btn-secondary-bg: var(--bg-tertiary);
+            --btn-secondary-hover: #dfe1e6;
             --input-bg: #ffffff;
             --badge-bg: #e9ecef;
             --badge-text: #495057;
@@ -36,36 +38,39 @@
             --badge-success-text: #155724;
             --badge-warning-bg: #fff3cd;
             --badge-warning-text: #856404;
-            --scrollbar-thumb: rgba(0,0,0,0.2);
+            --scrollbar-thumb: rgba(0,0,0,0.18);
             --scrollbar-track: transparent;
+            --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
         }
 
         [data-theme="dark"] {
-            --bg-primary: #1a1a2e;
-            --bg-secondary: #16213e;
-            --bg-tertiary: #0f3460;
-            --text-primary: #e8e8e8;
-            --text-secondary: #a0a0b0;
-            --text-muted: #6c6c80;
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #1c2333;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
             --accent: #FF6C37;
-            --accent-hover: #e55a2b;
-            --accent-subtle: rgba(255, 108, 55, 0.15);
+            --accent-hover: #ff8555;
+            --accent-subtle: rgba(255, 108, 55, 0.12);
             --border: rgba(255,255,255,0.08);
             --border-subtle: rgba(255,255,255,0.04);
-            --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
-            --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
-            --shadow-lg: 0 8px 30px rgba(0,0,0,0.5);
-            --header-text: #ffffff;
-            --btn-secondary-bg: #2a2a4a;
-            --btn-secondary-hover: #3a3a5e;
-            --input-bg: #0f3460;
-            --badge-bg: rgba(255,255,255,0.08);
-            --badge-text: #a0a0b0;
-            --badge-success-bg: rgba(76, 175, 80, 0.15);
-            --badge-success-text: #81c784;
-            --badge-warning-bg: rgba(255, 193, 7, 0.15);
-            --badge-warning-text: #ffd54f;
-            --scrollbar-thumb: rgba(255,255,255,0.15);
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+            --shadow-md: 0 2px 8px rgba(0,0,0,0.5);
+            --shadow-lg: 0 8px 24px rgba(0,0,0,0.6);
+            --header-bg: var(--bg-secondary);
+            --header-text: var(--text-primary);
+            --header-border: var(--border);
+            --btn-secondary-bg: #21262d;
+            --btn-secondary-hover: #30363d;
+            --input-bg: #0d1117;
+            --badge-bg: rgba(255,255,255,0.06);
+            --badge-text: #8b949e;
+            --badge-success-bg: rgba(76, 175, 80, 0.12);
+            --badge-success-text: #7ee787;
+            --badge-warning-bg: rgba(255, 193, 7, 0.12);
+            --badge-warning-text: #f0c546;
+            --scrollbar-thumb: rgba(255,255,255,0.12);
             --scrollbar-track: transparent;
         }
 
@@ -78,89 +83,120 @@
 
         /* ===== Scrollbar ===== */
         ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
+            width: 6px;
+            height: 6px;
         }
         ::-webkit-scrollbar-track {
             background: var(--scrollbar-track);
         }
         ::-webkit-scrollbar-thumb {
             background: var(--scrollbar-thumb);
-            border-radius: 4px;
+            border-radius: 3px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: var(--accent);
+            background: var(--text-muted);
         }
 
         /* ===== Base ===== */
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-size: 13px;
+            line-height: 1.5;
             background-color: var(--bg-primary);
             color: var(--text-primary);
             height: 100vh;
             display: flex;
             flex-direction: column;
             transition: background-color var(--transition), color var(--transition);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
         /* ===== Header ===== */
         header {
-            background-color: var(--accent);
+            background-color: var(--header-bg);
             color: var(--header-text);
-            padding: 12px 20px;
+            padding: 8px 16px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: var(--shadow-md);
+            border-bottom: 1px solid var(--header-border);
             z-index: 10;
+            min-height: 44px;
         }
 
         .logo {
-            font-size: 20px;
-            font-weight: bold;
+            font-size: 15px;
+            font-weight: 600;
             display: flex;
             align-items: center;
+            color: var(--text-primary);
+            letter-spacing: -0.2px;
         }
 
         .logo::before {
             content: "\1F4E1";
-            margin-right: 10px;
-            font-size: 24px;
+            margin-right: 8px;
+            font-size: 18px;
         }
 
         .header-actions {
             display: flex;
-            gap: 8px;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .header-divider {
+            width: 1px;
+            height: 20px;
+            background: var(--border);
+            margin: 0 4px;
         }
 
         /* ===== Buttons ===== */
         button {
-            background-color: var(--accent);
-            color: white;
-            border: none;
-            padding: 8px 15px;
+            background-color: var(--btn-secondary-bg);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            padding: 5px 12px;
             border-radius: var(--radius-sm);
             cursor: pointer;
-            font-size: 14px;
-            transition: background-color var(--transition), box-shadow var(--transition), transform var(--transition);
+            font-size: 12px;
+            font-weight: 500;
+            transition: background-color var(--transition), border-color var(--transition), color var(--transition);
+            line-height: 1.4;
         }
 
         button:hover {
-            background-color: var(--accent-hover);
-            box-shadow: var(--shadow-sm);
+            background-color: var(--btn-secondary-hover);
+            color: var(--text-primary);
+            border-color: var(--border);
         }
 
         button:active {
-            transform: scale(0.97);
+            opacity: 0.85;
+        }
+
+        button.primary {
+            background-color: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        button.primary:hover {
+            background-color: var(--accent-hover);
+            border-color: var(--accent-hover);
+            color: white;
         }
 
         button.secondary {
             background-color: var(--btn-secondary-bg);
-            color: var(--text-primary);
+            color: var(--text-secondary);
         }
 
         button.secondary:hover {
             background-color: var(--btn-secondary-hover);
+            color: var(--text-primary);
         }
 
         /* ===== Layout ===== */
@@ -172,7 +208,7 @@
 
         /* ===== Sidebar ===== */
         .sidebar {
-            width: var(--sidebar-width, 280px);
+            width: var(--sidebar-width, 260px);
             min-width: 200px;
             max-width: 500px;
             background-color: var(--bg-secondary);
@@ -200,7 +236,7 @@
             width: 1px;
             height: 100%;
             background: var(--border);
-            transition: background-color 0.2s, width 0.2s;
+            transition: background-color var(--transition), width var(--transition);
         }
 
         .resize-handle:hover::after,
@@ -211,16 +247,25 @@
         }
 
         .sidebar-header {
-            padding: 15px;
+            padding: 12px 14px;
             border-bottom: 1px solid var(--border);
-            background-color: var(--bg-tertiary);
+            background-color: var(--bg-secondary);
             transition: background-color var(--transition);
+        }
+
+        .sidebar-header h3 {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin: 0 0 8px 0;
         }
 
         .sidebar-content {
             flex: 1;
             overflow-y: auto;
-            padding: 10px;
+            padding: 6px 8px;
         }
 
         /* ===== Tree View ===== */
@@ -229,12 +274,13 @@
         }
 
         .tree-item {
-            padding: 8px 12px;
-            margin: 2px 0;
+            padding: 6px 10px;
+            margin: 1px 0;
             border-radius: var(--radius-sm);
             cursor: pointer;
             display: flex;
             align-items: center;
+            font-size: 13px;
             transition: background-color var(--transition);
         }
 
@@ -268,36 +314,36 @@
         /* ===== Tabs ===== */
         .tabs {
             display: flex;
-            background-color: var(--bg-secondary);
+            background-color: var(--bg-primary);
             border-bottom: 1px solid var(--border);
-            padding: 0 15px;
+            padding: 0 16px;
             transition: background-color var(--transition);
         }
 
         .tab {
-            padding: 10px 20px;
+            padding: 10px 16px;
             cursor: pointer;
-            border-bottom: 3px solid transparent;
+            border-bottom: 2px solid transparent;
             font-weight: 500;
-            color: var(--text-secondary);
-            transition: color var(--transition), background-color var(--transition), border-color var(--transition);
-            border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+            font-size: 13px;
+            color: var(--text-muted);
+            transition: color var(--transition), border-color var(--transition);
+            margin-bottom: -1px;
         }
 
         .tab:hover {
-            background-color: var(--bg-tertiary);
             color: var(--text-primary);
         }
 
         .tab.active {
             border-bottom-color: var(--accent);
-            color: var(--accent);
-            background-color: var(--accent-subtle);
+            color: var(--text-primary);
+            font-weight: 600;
         }
 
         .tab-content {
             flex: 1;
-            padding: 20px;
+            padding: 16px 20px;
             overflow-y: auto;
             background-color: var(--bg-primary);
             transition: background-color var(--transition);
@@ -305,22 +351,23 @@
 
         /* ===== Forms ===== */
         .form-group {
-            margin-bottom: 15px;
+            margin-bottom: 12px;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 4px;
             font-weight: 500;
+            font-size: 12px;
             color: var(--text-secondary);
         }
 
         .form-control {
             width: 100%;
-            padding: 8px 12px;
+            padding: 6px 10px;
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
-            font-size: 14px;
+            font-size: 13px;
             font-family: inherit;
             background-color: var(--input-bg);
             color: var(--text-primary);
@@ -330,13 +377,15 @@
         .form-control:focus {
             outline: none;
             border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-subtle);
+            box-shadow: 0 0 0 2px var(--accent-subtle);
         }
 
         textarea.form-control {
             min-height: 100px;
             resize: vertical;
-            font-family: 'Courier New', Courier, monospace;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.5;
         }
 
         select.form-control {
@@ -497,7 +546,7 @@
             color: var(--text-secondary);
         }
         .endpoints-table td:first-child {
-            font-family: monospace;
+            font-family: var(--font-mono);
             color: var(--text-primary);
         }
         .endpoints-table td:last-child {
@@ -666,27 +715,32 @@
         /* ===== Status Bar ===== */
         .status-bar {
             background-color: var(--bg-secondary);
-            padding: 8px 15px;
+            padding: 4px 16px;
             border-top: 1px solid var(--border);
-            font-size: 13px;
+            font-size: 11px;
             color: var(--text-muted);
             display: flex;
             justify-content: space-between;
+            align-items: center;
+            min-height: 24px;
             transition: background-color var(--transition);
         }
 
         /* ===== Empty State ===== */
         .empty-state {
             text-align: center;
-            padding: 50px 20px;
+            padding: 40px 24px;
             color: var(--text-muted);
+            font-size: 13px;
+            line-height: 1.6;
         }
 
         .empty-state::before {
             content: "\1F4CB";
-            font-size: 48px;
+            font-size: 36px;
             display: block;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
+            opacity: 0.6;
         }
 
         /* ===== Inheritance Panel ===== */
@@ -825,9 +879,10 @@
 
         .dialog-box {
             background-color: var(--bg-secondary);
-            padding: 25px;
+            padding: 24px;
             border-radius: var(--radius-lg);
             box-shadow: var(--shadow-lg);
+            border: 1px solid var(--border);
             width: 400px;
             max-width: 90%;
             text-align: center;
@@ -1410,7 +1465,7 @@
             justify-content: space-between;
             align-items: center;
             font-size: 13px;
-            font-family: 'Courier New', Courier, monospace;
+            font-family: var(--font-mono);
             transition: background-color 0.1s;
         }
 
@@ -1609,10 +1664,10 @@
             color: var(--text-primary);
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
-            padding: 6px 10px;
-            font-size: 13px;
+            padding: 4px 8px;
+            font-size: 12px;
             cursor: pointer;
-            min-width: 140px;
+            min-width: 130px;
         }
 
         #envSelector:focus {
@@ -1621,8 +1676,8 @@
         }
 
         #manageEnvBtn {
-            padding: 6px 10px;
-            font-size: 12px;
+            padding: 4px 8px;
+            font-size: 11px;
         }
 
         /* ===== Environment Manager Panel ===== */
@@ -1767,7 +1822,7 @@
             font-size: 11px;
             color: var(--text-muted);
             margin-top: 4px;
-            font-family: 'Courier New', Courier, monospace;
+            font-family: var(--font-mono);
             word-break: break-all;
         }
 
@@ -1845,7 +1900,7 @@
 
         .response-body pre {
             margin: 0;
-            font-family: 'Courier New', Courier, monospace;
+            font-family: var(--font-mono);
             font-size: 12px;
             line-height: 1.5;
             white-space: pre-wrap;
@@ -1923,7 +1978,7 @@
         .template-preview {
             padding: 8px 12px;
             font-size: 12px;
-            font-family: 'Courier New', Courier, monospace;
+            font-family: var(--font-mono);
             color: var(--text-muted);
             white-space: pre-wrap;
             word-break: break-all;
@@ -1948,20 +2003,23 @@
     <header>
         <div class="logo">Postman Helper</div>
         <div class="header-actions">
+            <button id="newRequestBtn" class="primary">+ Request</button>
+            <button id="newFolderBtn">+ Folder</button>
+            <div class="header-divider"></div>
+            <button id="importBtn">Import</button>
+            <button id="exportBtn" class="primary">Export</button>
+            <button id="exportDocsBtn" title="Export API Documentation">Docs</button>
+            <div class="header-divider"></div>
             <div class="env-selector-group">
                 <select id="envSelector">
                     <option value="">No Environment</option>
                 </select>
-                <button id="manageEnvBtn" class="secondary">Manage</button>
+                <button id="manageEnvBtn">Manage</button>
             </div>
-            <button id="newRequestBtn">New Request</button>
-            <button id="newFolderBtn">New Folder</button>
-            <button id="importBtn" class="secondary">Import</button>
-            <button id="exportBtn">Export</button>
-            <button id="exportDocsBtn" class="secondary" title="Export API Documentation">Export Docs</button>
-            <button id="loadSampleBtn" class="secondary" title="Load sample API collection">Load Sample</button>
-            <button id="settingsBtn" class="secondary">&#9881;&#65039; Settings</button>
-            <button id="analyticsBtn" class="secondary" title="Usage analytics dashboard">Analytics</button>
+            <div class="header-divider"></div>
+            <button id="loadSampleBtn" title="Load sample API collection">Sample</button>
+            <button id="analyticsBtn" title="Usage analytics dashboard">Analytics</button>
+            <button id="settingsBtn" title="Settings">&#9881;&#65039;</button>
         </div>
     </header>
 
@@ -2008,11 +2066,12 @@
             <div class="tab-content">
                 <div id="requestTab" class="tab-pane active">
                     <div class="empty-state">
-                        <div>Select or create a request to get started</div>
-                        <div style="margin-top: 10px; font-size: 13px;">
-                            <span class="badge">&#8984;N</span> New Request<br>
-                            <span class="badge">&#8984;O</span> Open Collection<br>
-                            <span class="badge">&#8984;S</span> Save Collection
+                        <div style="font-size: 15px; color: var(--text-secondary); font-weight: 500; margin-bottom: 8px;">No request selected</div>
+                        <div style="margin-bottom: 16px;">Select a request from the sidebar or create a new one to get started.</div>
+                        <div style="display: inline-flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
+                            <span class="badge" style="font-size: 12px; padding: 4px 10px;">&#8984;N New Request</span>
+                            <span class="badge" style="font-size: 12px; padding: 4px 10px;">&#8984;O Open</span>
+                            <span class="badge" style="font-size: 12px; padding: 4px 10px;">&#8984;S Save</span>
                         </div>
                     </div>
                 </div>
@@ -2155,7 +2214,7 @@
     </div>
 
     <div class="status-bar">
-        <div>Postman Helper v1.0.0 | Ready</div>
+        <div>Postman Helper v1.98 | Ready</div>
         <div id="statusInfo">No collection loaded</div>
     </div>
 
