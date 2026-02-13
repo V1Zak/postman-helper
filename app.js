@@ -413,6 +413,13 @@ try {
 
 // Custom Dialog System - Replacement for prompt(), confirm(), and alert()
 class DialogSystem {
+    // Animated close: add closing class, then remove after animation
+    static _closeOverlay(overlay, keyHandler) {
+        if (keyHandler) document.removeEventListener('keydown', keyHandler);
+        overlay.classList.add('closing');
+        setTimeout(() => overlay.remove(), 120);
+    }
+
     // Focus trap: Tab cycles within the dialog container
     static trapFocus(container) {
         const focusable = container.querySelectorAll('input, select, button, textarea, [tabindex]:not([tabindex="-1"])');
@@ -435,6 +442,7 @@ class DialogSystem {
             return new Promise(resolve => DialogSystem.showPrompt(title, defaultValue, resolve));
         }
 
+        const trigger = document.activeElement;
         const overlay = document.createElement('div');
         overlay.className = 'dialog-overlay';
 
@@ -461,8 +469,8 @@ class DialogSystem {
         cancelButton.className = 'dialog-btn secondary';
 
         const cleanup = () => {
-            document.removeEventListener('keydown', keyHandler);
-            overlay.remove();
+            DialogSystem._closeOverlay(overlay, keyHandler);
+            if (trigger && trigger.focus) try { trigger.focus(); } catch (_) {}
         };
 
         okButton.addEventListener('click', () => { cleanup(); callback(input.value); });
@@ -497,6 +505,7 @@ class DialogSystem {
             return new Promise(resolve => DialogSystem.showConfirm(message, resolve));
         }
 
+        const trigger = document.activeElement;
         const overlay = document.createElement('div');
         overlay.className = 'dialog-overlay';
 
@@ -520,8 +529,8 @@ class DialogSystem {
         cancelButton.className = 'dialog-btn secondary';
 
         const cleanup = () => {
-            document.removeEventListener('keydown', keyHandler);
-            overlay.remove();
+            DialogSystem._closeOverlay(overlay, keyHandler);
+            if (trigger && trigger.focus) try { trigger.focus(); } catch (_) {}
         };
 
         okButton.addEventListener('click', () => { cleanup(); callback(true); });
@@ -545,11 +554,65 @@ class DialogSystem {
         okButton.focus();
     }
 
+    static showDangerConfirm(message, confirmText, callback) {
+        if (!callback) {
+            return new Promise(resolve => DialogSystem.showDangerConfirm(message, confirmText, resolve));
+        }
+
+        const trigger = document.activeElement;
+        const overlay = document.createElement('div');
+        overlay.className = 'dialog-overlay';
+
+        const dialogBox = document.createElement('div');
+        dialogBox.className = 'dialog-box';
+
+        const msgEl = document.createElement('p');
+        msgEl.textContent = message;
+        msgEl.style.margin = '20px 0';
+        msgEl.style.fontSize = '16px';
+
+        const buttonContainer = document.createElement('div');
+        buttonContainer.className = 'dialog-buttons';
+
+        const dangerBtn = document.createElement('button');
+        dangerBtn.textContent = confirmText || 'Delete';
+        dangerBtn.className = 'dialog-btn danger';
+
+        const cancelButton = document.createElement('button');
+        cancelButton.textContent = 'Cancel';
+        cancelButton.className = 'dialog-btn secondary';
+
+        const cleanup = () => {
+            DialogSystem._closeOverlay(overlay, keyHandler);
+            if (trigger && trigger.focus) try { trigger.focus(); } catch (_) {}
+        };
+
+        dangerBtn.addEventListener('click', () => { cleanup(); callback(true); });
+        cancelButton.addEventListener('click', () => { cleanup(); callback(false); });
+
+        const keyHandler = (e) => {
+            if (e.key === 'Escape') { cleanup(); callback(false); }
+        };
+        document.addEventListener('keydown', keyHandler);
+
+        buttonContainer.appendChild(cancelButton);
+        buttonContainer.appendChild(dangerBtn);
+
+        dialogBox.appendChild(msgEl);
+        dialogBox.appendChild(buttonContainer);
+        overlay.appendChild(dialogBox);
+        document.body.appendChild(overlay);
+
+        DialogSystem.trapFocus(dialogBox);
+        cancelButton.focus(); // Focus cancel by default for safety
+    }
+
     static showAlert(message, callback) {
         if (!callback) {
             return new Promise(resolve => DialogSystem.showAlert(message, resolve));
         }
 
+        const trigger = document.activeElement;
         const overlay = document.createElement('div');
         overlay.className = 'dialog-overlay';
 
@@ -569,8 +632,8 @@ class DialogSystem {
         okButton.className = 'dialog-btn primary';
 
         const cleanup = () => {
-            document.removeEventListener('keydown', keyHandler);
-            overlay.remove();
+            DialogSystem._closeOverlay(overlay, keyHandler);
+            if (trigger && trigger.focus) try { trigger.focus(); } catch (_) {}
         };
 
         okButton.addEventListener('click', () => { cleanup(); callback(); });
@@ -595,6 +658,7 @@ class DialogSystem {
             return new Promise(resolve => DialogSystem.showSelect(title, options, resolve));
         }
 
+        const trigger = document.activeElement;
         const overlay = document.createElement('div');
         overlay.className = 'dialog-overlay';
 
@@ -626,8 +690,8 @@ class DialogSystem {
         cancelButton.className = 'dialog-btn secondary';
 
         const cleanup = () => {
-            document.removeEventListener('keydown', keyHandler);
-            overlay.remove();
+            DialogSystem._closeOverlay(overlay, keyHandler);
+            if (trigger && trigger.focus) try { trigger.focus(); } catch (_) {}
         };
 
         okButton.addEventListener('click', () => { cleanup(); callback(select.value); });
@@ -656,6 +720,7 @@ class DialogSystem {
             return new Promise(resolve => DialogSystem.showMultiSelect(title, options, resolve));
         }
 
+        const trigger = document.activeElement;
         const overlay = document.createElement('div');
         overlay.className = 'dialog-overlay';
 
@@ -683,6 +748,25 @@ class DialogSystem {
             listContainer.appendChild(item);
         });
 
+        // Select All / Deselect All controls
+        const selectActions = document.createElement('div');
+        selectActions.className = 'dialog-select-actions';
+        const selectAllBtn = document.createElement('button');
+        selectAllBtn.textContent = 'Select All';
+        selectAllBtn.type = 'button';
+        const deselectAllBtn = document.createElement('button');
+        deselectAllBtn.textContent = 'Deselect All';
+        deselectAllBtn.type = 'button';
+
+        selectAllBtn.addEventListener('click', () => {
+            listContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+        });
+        deselectAllBtn.addEventListener('click', () => {
+            listContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; });
+        });
+        selectActions.appendChild(selectAllBtn);
+        selectActions.appendChild(deselectAllBtn);
+
         const buttonContainer = document.createElement('div');
         buttonContainer.className = 'dialog-buttons';
 
@@ -697,8 +781,8 @@ class DialogSystem {
         const getSelected = () => Array.from(listContainer.querySelectorAll('input:checked')).map(cb => cb.value);
 
         const cleanup = () => {
-            document.removeEventListener('keydown', keyHandler);
-            overlay.remove();
+            DialogSystem._closeOverlay(overlay, keyHandler);
+            if (trigger && trigger.focus) try { trigger.focus(); } catch (_) {}
         };
 
         okButton.addEventListener('click', () => { cleanup(); callback(getSelected()); });
@@ -714,6 +798,7 @@ class DialogSystem {
         buttonContainer.appendChild(cancelButton);
         dialogBox.appendChild(titleEl);
         dialogBox.appendChild(listContainer);
+        dialogBox.appendChild(selectActions);
         dialogBox.appendChild(buttonContainer);
         overlay.appendChild(dialogBox);
         document.body.appendChild(overlay);
@@ -4189,7 +4274,7 @@ class PostmanHelperApp {
         };
 
         if (this.state.confirmBeforeDelete) {
-            DialogSystem.showConfirm(`Are you sure you want to delete "${deleteName}"?`, (confirmDelete) => {
+            DialogSystem.showDangerConfirm(`Are you sure you want to delete "${deleteName}"?`, 'Delete', (confirmDelete) => {
                 if (confirmDelete) doDelete();
             });
         } else {
@@ -5409,7 +5494,7 @@ class PostmanHelperApp {
     }
 
     deleteCollection(collection) {
-        DialogSystem.showConfirm(`Delete collection "${collection.name}" and all its contents?`, (confirmed) => {
+        DialogSystem.showDangerConfirm(`Delete collection "${collection.name}" and all its contents?`, 'Delete', (confirmed) => {
             if (!confirmed) return;
             this.state.removeCollection(collection);
             this.state.markAsChanged();
@@ -5420,7 +5505,7 @@ class PostmanHelperApp {
     }
 
     deleteRequestDirect(request) {
-        DialogSystem.showConfirm(`Delete "${request.name}"?`, (confirmed) => {
+        DialogSystem.showDangerConfirm(`Delete "${request.name}"?`, 'Delete', (confirmed) => {
             if (!confirmed) return;
             // Remove from root
             const rootIdx = this.state.currentCollection.requests.indexOf(request);
@@ -5562,7 +5647,7 @@ class PostmanHelperApp {
     }
 
     deleteFolder(folder) {
-        DialogSystem.showConfirm(`Delete folder "${folder.name}" and all its contents?`, (confirmed) => {
+        DialogSystem.showDangerConfirm(`Delete folder "${folder.name}" and all its contents?`, 'Delete', (confirmed) => {
             if (!confirmed) return;
             // Remove from parent
             const removeFolderFrom = (folders) => {
