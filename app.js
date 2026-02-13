@@ -467,6 +467,335 @@ class DialogSystem {
     }
 }
 
+// Documentation Generator - generates Markdown and HTML docs from collections
+class DocGenerator {
+    static generateMarkdown(collection) {
+        let md = '';
+        md += `# ${collection.name}\n\n`;
+        if (collection.description) {
+            md += `${collection.description}\n\n`;
+        }
+        md += `> Generated on ${new Date().toLocaleDateString()}\n\n`;
+        md += `---\n\n`;
+        md += `## Table of Contents\n\n`;
+        md += DocGenerator.generateTOC(collection);
+        md += `\n---\n\n`;
+
+        // Root requests
+        if (collection.requests && collection.requests.length > 0) {
+            md += `## Requests\n\n`;
+            collection.requests.forEach(req => {
+                md += DocGenerator.requestToMarkdown(req);
+            });
+        }
+
+        // Folders (recursive)
+        if (collection.folders && collection.folders.length > 0) {
+            collection.folders.forEach(folder => {
+                md += DocGenerator.folderToMarkdown(folder, 2);
+            });
+        }
+
+        return md;
+    }
+
+    static generateTOC(collection) {
+        let toc = '';
+        let counter = 1;
+
+        if (collection.requests) {
+            collection.requests.forEach(req => {
+                toc += `${counter}. **${req.name}** — \`${req.method || 'GET'} ${req.url || ''}\`\n`;
+                counter++;
+            });
+        }
+
+        if (collection.folders) {
+            collection.folders.forEach(folder => {
+                toc += `${counter}. **${folder.name}/**\n`;
+                counter++;
+                toc += DocGenerator.folderTOC(folder, '   ');
+            });
+        }
+
+        return toc;
+    }
+
+    static folderTOC(folder, indent) {
+        let toc = '';
+        let sub = 1;
+
+        if (folder.requests) {
+            folder.requests.forEach(req => {
+                toc += `${indent}${sub}. **${req.name}** — \`${req.method || 'GET'} ${req.url || ''}\`\n`;
+                sub++;
+            });
+        }
+
+        if (folder.folders) {
+            folder.folders.forEach(subfolder => {
+                toc += `${indent}${sub}. **${subfolder.name}/**\n`;
+                sub++;
+                toc += DocGenerator.folderTOC(subfolder, indent + '   ');
+            });
+        }
+
+        return toc;
+    }
+
+    static requestToMarkdown(req) {
+        let md = '';
+        const method = req.method || 'GET';
+        const url = req.url || '';
+
+        md += `### ${method} ${req.name}\n\n`;
+        md += `**Method:** \`${method}\`\n`;
+        md += `**URL:** \`${url}\`\n\n`;
+
+        if (req.description) {
+            md += `${req.description}\n\n`;
+        }
+
+        // Headers
+        const headers = DocGenerator.normalizeHeaders(req.headers);
+        if (headers.length > 0) {
+            md += `#### Headers\n\n`;
+            md += `| Key | Value |\n`;
+            md += `|-----|-------|\n`;
+            headers.forEach(h => {
+                md += `| ${h.key} | ${h.value} |\n`;
+            });
+            md += `\n`;
+        }
+
+        // Body
+        if (req.body && req.body.trim()) {
+            md += `#### Body\n\n`;
+            md += '```json\n';
+            md += `${req.body}\n`;
+            md += '```\n\n';
+        }
+
+        // Tests
+        const tests = req.tests || (req.events && req.events.test) || '';
+        if (tests && tests.trim()) {
+            md += `#### Tests\n\n`;
+            md += '```javascript\n';
+            md += `${tests}\n`;
+            md += '```\n\n';
+        }
+
+        md += `---\n\n`;
+        return md;
+    }
+
+    static folderToMarkdown(folder, depth) {
+        let md = '';
+        const heading = '#'.repeat(Math.min(depth, 6));
+
+        md += `${heading} ${folder.name}\n\n`;
+
+        if (folder.requests) {
+            folder.requests.forEach(req => {
+                md += DocGenerator.requestToMarkdown(req);
+            });
+        }
+
+        if (folder.folders) {
+            folder.folders.forEach(subfolder => {
+                md += DocGenerator.folderToMarkdown(subfolder, depth + 1);
+            });
+        }
+
+        return md;
+    }
+
+    static normalizeHeaders(headers) {
+        if (!headers) return [];
+        if (Array.isArray(headers)) {
+            return headers.filter(h => h.key).map(h => ({ key: h.key, value: h.value || '' }));
+        }
+        if (typeof headers === 'object') {
+            return Object.entries(headers).map(([key, value]) => ({ key, value: String(value) }));
+        }
+        return [];
+    }
+
+    static generateHTML(collection) {
+        const bodyContent = DocGenerator.renderHTMLBody(collection);
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${DocGenerator.htmlEscape(collection.name)} - API Documentation</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 900px; margin: 0 auto; padding: 40px 20px; color: #333; line-height: 1.6; }
+h1 { border-bottom: 2px solid #333; padding-bottom: 10px; }
+h2 { border-bottom: 1px solid #ddd; padding-bottom: 6px; margin-top: 40px; }
+h3 { margin-top: 30px; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0 20px; }
+th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+th { background: #f4f4f4; font-weight: 600; }
+code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+pre { background: #f4f4f4; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 0.9em; }
+pre code { background: none; padding: 0; }
+blockquote { border-left: 4px solid #ddd; margin: 16px 0; padding: 8px 16px; color: #666; }
+hr { border: none; border-top: 1px solid #ddd; margin: 30px 0; }
+.method-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; color: white; font-weight: bold; font-size: 12px; margin-right: 6px; }
+.method-get { background: #61affe; }
+.method-post { background: #49cc90; }
+.method-put { background: #fca130; }
+.method-delete { background: #f93e3e; }
+.method-patch { background: #50e3c2; }
+.method-head { background: #9012fe; }
+.method-options { background: #0d5aa7; }
+.toc { background: #fafafa; padding: 20px; border-radius: 8px; border: 1px solid #eee; }
+.toc ol { padding-left: 20px; }
+.toc li { margin: 4px 0; }
+.toc a { text-decoration: none; color: #0366d6; }
+.toc a:hover { text-decoration: underline; }
+.endpoint { background: #f8f9fa; padding: 12px 16px; border-radius: 6px; border: 1px solid #eee; margin: 10px 0; }
+</style>
+</head>
+<body>
+${bodyContent}
+</body>
+</html>`;
+    }
+
+    static renderHTMLBody(collection) {
+        let html = '';
+        html += `<h1>${DocGenerator.htmlEscape(collection.name)}</h1>\n`;
+        if (collection.description) {
+            html += `<p>${DocGenerator.htmlEscape(collection.description)}</p>\n`;
+        }
+        html += `<blockquote>Generated on ${new Date().toLocaleDateString()}</blockquote>\n`;
+        html += `<hr>\n`;
+
+        // TOC
+        html += `<div class="toc">\n<h2>Table of Contents</h2>\n<ol>\n`;
+        html += DocGenerator.generateHTMLTOC(collection);
+        html += `</ol>\n</div>\n<hr>\n`;
+
+        // Root requests
+        if (collection.requests && collection.requests.length > 0) {
+            html += `<h2>Requests</h2>\n`;
+            collection.requests.forEach(req => {
+                html += DocGenerator.requestToHTML(req);
+            });
+        }
+
+        // Folders
+        if (collection.folders && collection.folders.length > 0) {
+            collection.folders.forEach(folder => {
+                html += DocGenerator.folderToHTML(folder, 2);
+            });
+        }
+
+        return html;
+    }
+
+    static generateHTMLTOC(collection) {
+        let html = '';
+        if (collection.requests) {
+            collection.requests.forEach(req => {
+                const anchor = DocGenerator.slugify(req.name);
+                html += `<li><a href="#${anchor}">${DocGenerator.htmlEscape(req.name)}</a> — <code>${req.method || 'GET'} ${DocGenerator.htmlEscape(req.url || '')}</code></li>\n`;
+            });
+        }
+        if (collection.folders) {
+            collection.folders.forEach(folder => {
+                html += `<li><strong>${DocGenerator.htmlEscape(folder.name)}/</strong>\n<ol>\n`;
+                html += DocGenerator.folderHTMLTOC(folder);
+                html += `</ol>\n</li>\n`;
+            });
+        }
+        return html;
+    }
+
+    static folderHTMLTOC(folder) {
+        let html = '';
+        if (folder.requests) {
+            folder.requests.forEach(req => {
+                const anchor = DocGenerator.slugify(req.name);
+                html += `<li><a href="#${anchor}">${DocGenerator.htmlEscape(req.name)}</a> — <code>${req.method || 'GET'} ${DocGenerator.htmlEscape(req.url || '')}</code></li>\n`;
+            });
+        }
+        if (folder.folders) {
+            folder.folders.forEach(subfolder => {
+                html += `<li><strong>${DocGenerator.htmlEscape(subfolder.name)}/</strong>\n<ol>\n`;
+                html += DocGenerator.folderHTMLTOC(subfolder);
+                html += `</ol>\n</li>\n`;
+            });
+        }
+        return html;
+    }
+
+    static requestToHTML(req) {
+        const method = req.method || 'GET';
+        const methodClass = `method-${method.toLowerCase()}`;
+        const anchor = DocGenerator.slugify(req.name);
+        let html = '';
+
+        html += `<h3 id="${anchor}"><span class="method-badge ${methodClass}">${method}</span> ${DocGenerator.htmlEscape(req.name)}</h3>\n`;
+        html += `<div class="endpoint"><strong>URL:</strong> <code>${DocGenerator.htmlEscape(req.url || '')}</code></div>\n`;
+
+        if (req.description) {
+            html += `<p>${DocGenerator.htmlEscape(req.description)}</p>\n`;
+        }
+
+        // Headers
+        const headers = DocGenerator.normalizeHeaders(req.headers);
+        if (headers.length > 0) {
+            html += `<h4>Headers</h4>\n<table><tr><th>Key</th><th>Value</th></tr>\n`;
+            headers.forEach(h => {
+                html += `<tr><td>${DocGenerator.htmlEscape(h.key)}</td><td>${DocGenerator.htmlEscape(h.value)}</td></tr>\n`;
+            });
+            html += `</table>\n`;
+        }
+
+        // Body
+        if (req.body && req.body.trim()) {
+            html += `<h4>Body</h4>\n<pre><code>${DocGenerator.htmlEscape(req.body)}</code></pre>\n`;
+        }
+
+        // Tests
+        const tests = req.tests || (req.events && req.events.test) || '';
+        if (tests && tests.trim()) {
+            html += `<h4>Tests</h4>\n<pre><code>${DocGenerator.htmlEscape(tests)}</code></pre>\n`;
+        }
+
+        html += `<hr>\n`;
+        return html;
+    }
+
+    static folderToHTML(folder, depth) {
+        const tag = `h${Math.min(depth, 6)}`;
+        let html = `<${tag}>${DocGenerator.htmlEscape(folder.name)}</${tag}>\n`;
+
+        if (folder.requests) {
+            folder.requests.forEach(req => {
+                html += DocGenerator.requestToHTML(req);
+            });
+        }
+        if (folder.folders) {
+            folder.folders.forEach(subfolder => {
+                html += DocGenerator.folderToHTML(subfolder, depth + 1);
+            });
+        }
+        return html;
+    }
+
+    static htmlEscape(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    static slugify(str) {
+        return (str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    }
+}
+
 // AppState class - manages application state
 class AppState {
     constructor() {
@@ -642,6 +971,14 @@ class PostmanHelperApp {
         document.getElementById('newFolderBtn').addEventListener('click', () => this.createNewFolder());
         document.getElementById('importBtn').addEventListener('click', () => this.importCollection());
         document.getElementById('exportBtn').addEventListener('click', () => this.exportCollection());
+        const exportDocsBtn = document.getElementById('exportDocsBtn');
+        if (exportDocsBtn) {
+            exportDocsBtn.addEventListener('click', () => {
+                DialogSystem.showConfirm('Export documentation as:\n\nOK = Markdown (.md)\nCancel = HTML (.html)', (isMarkdown) => {
+                    this.exportDocumentation(isMarkdown ? 'markdown' : 'html');
+                });
+            });
+        }
         document.getElementById('settingsBtn').addEventListener('click', () => this.showSettings());
         document.getElementById('addCollectionBtn').addEventListener('click', () => this.createNewCollection());
 
@@ -2351,6 +2688,31 @@ class PostmanHelperApp {
         } catch (error) {
             console.error('Export error:', error);
             alert('Error exporting collection: ' + error.message);
+        }
+    }
+
+    async exportDocumentation(format = 'markdown') {
+        if (!this.state.currentCollection) {
+            this.showToast('No collection to document');
+            return;
+        }
+        const collection = this.state.currentCollection;
+        const content = format === 'html'
+            ? DocGenerator.generateHTML(collection)
+            : DocGenerator.generateMarkdown(collection);
+        const ext = format === 'html' ? 'html' : 'md';
+        try {
+            const result = await window.electronAPI.saveFile({
+                defaultPath: `${collection.name}-docs.${ext}`,
+                filters: [{ name: `${format.toUpperCase()} Files`, extensions: [ext] }],
+                content: content
+            });
+            if (result.success) {
+                this.showToast(`Documentation exported to ${result.path}`);
+            }
+        } catch (error) {
+            console.error('Documentation export error:', error);
+            this.showToast('Error exporting documentation');
         }
     }
 
