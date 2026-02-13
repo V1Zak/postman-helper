@@ -6128,62 +6128,187 @@ class PostmanHelperApp {
             panel.innerHTML = `
                 <div class="response-header">
                     <span class="response-status status-err">Error</span>
-                    <span class="response-time">${response.error || 'Unknown error'}</span>
+                    <span class="response-time">${this.escapeHtml(response.error || 'Unknown error')}</span>
+                    <span style="flex:1"></span>
+                    <button class="response-close-btn" title="Dismiss">&times;</button>
                 </div>
             `;
             requestTab.appendChild(panel);
+            panel.querySelector('.response-close-btn').addEventListener('click', () => panel.remove());
             return;
         }
 
         const statusClass = response.status < 300 ? 'status-2xx' :
                             response.status < 400 ? 'status-3xx' :
                             response.status < 500 ? 'status-4xx' : 'status-5xx';
+        const statusDesc = this.getStatusDescription(response.status);
 
         // Try to pretty-print JSON
         let bodyDisplay = response.body || '';
+        let rawBody = response.body || '';
         let isJson = false;
+        let parsedJson = null;
         try {
-            const parsed = JSON.parse(bodyDisplay);
-            bodyDisplay = JSON.stringify(parsed, null, 2);
+            parsedJson = JSON.parse(bodyDisplay);
+            bodyDisplay = JSON.stringify(parsedJson, null, 2);
             isJson = true;
         } catch (_) {}
 
         const sizeStr = response.body ? this.formatBytes(new Blob([response.body]).size) : '0 B';
+        const headerCount = response.headers ? Object.keys(response.headers).length : 0;
 
-        // Build response headers HTML
+        // Build response headers HTML with copy buttons
         let headersHtml = '';
         if (response.headers && typeof response.headers === 'object') {
             for (const [k, v] of Object.entries(response.headers)) {
-                headersHtml += `<div class="header-entry"><span class="header-key">${this.escapeHtml(k)}</span><span class="header-val">${this.escapeHtml(String(v))}</span></div>`;
+                headersHtml += `<div class="header-entry"><span class="header-key">${this.escapeHtml(k)}</span><span class="header-val">${this.escapeHtml(String(v))}</span><button class="header-copy-btn" data-copy="${this.escapeHtml(k + ': ' + v)}" title="Copy header">&boxbox;</button></div>`;
             }
         }
 
+        // Test results tab content
+        let testResultsHtml = '';
+        if (response.testResults && response.testResults.length > 0) {
+            testResultsHtml = response.testResults.map(r =>
+                `<div class="test-result-entry ${r.passed ? 'test-pass' : 'test-fail'}"><span class="test-result-icon">${r.passed ? '\u2713' : '\u2717'}</span><span>${this.escapeHtml(r.name)}</span></div>`
+            ).join('');
+        }
+
+        const bodyHtml = isJson ? this.highlightJson(bodyDisplay) : `<pre>${this.escapeHtml(bodyDisplay)}</pre>`;
+
         panel.innerHTML = `
             <div class="response-header">
-                <span class="response-status ${statusClass}">${response.status} ${response.statusText || ''}</span>
+                <span class="response-status ${statusClass}">${response.status} ${statusDesc}</span>
                 <span class="response-time">${response.time}ms</span>
                 <span class="response-size">${sizeStr}</span>
+                <span style="flex:1"></span>
+                <button class="response-action-btn" id="copyResponseBtn" title="Copy body">Copy</button>
+                <button class="response-action-btn" id="saveResponseBtn" title="Save to file">Save</button>
+                <button class="response-close-btn" title="Dismiss">&times;</button>
             </div>
             <div class="response-tabs">
                 <div class="response-tab active" data-rtab="body">Body</div>
-                <div class="response-tab" data-rtab="headers">Headers</div>
+                <div class="response-tab" data-rtab="headers">Headers (${headerCount})</div>
+                ${testResultsHtml ? '<div class="response-tab" data-rtab="tests">Tests</div>' : ''}
             </div>
-            <div id="responseBodyPane" class="response-body"><pre>${this.escapeHtml(bodyDisplay)}</pre></div>
+            <div class="response-toolbar">
+                <label class="response-toggle" title="Toggle raw/pretty"><input type="checkbox" id="prettyPrintToggle" ${isJson ? 'checked' : ''} ${isJson ? '' : 'disabled'}><span>Pretty</span></label>
+            </div>
+            <div id="responseBodyPane" class="response-body">${bodyHtml}</div>
             <div id="responseHeadersPane" class="response-headers-list" style="display:none;">${headersHtml}</div>
+            ${testResultsHtml ? `<div id="responseTestsPane" class="response-tests-list" style="display:none;">${testResultsHtml}</div>` : ''}
         `;
 
         requestTab.appendChild(panel);
 
+        // Close button
+        panel.querySelector('.response-close-btn').addEventListener('click', () => panel.remove());
+
+        // Copy body button
+        const copyBtn = document.getElementById('copyResponseBtn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', () => {
+                const text = isJson && document.getElementById('prettyPrintToggle').checked ? bodyDisplay : rawBody;
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(text).then(() => this.showToast('Response copied', 1500, 'success'));
+                }
+            });
+        }
+
+        // Save to file button
+        const saveBtn = document.getElementById('saveResponseBtn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                if (window.electronAPI && window.electronAPI.saveFile) {
+                    const ext = isJson ? 'json' : 'txt';
+                    const content = isJson && document.getElementById('prettyPrintToggle').checked ? bodyDisplay : rawBody;
+                    try {
+                        const result = await window.electronAPI.saveFile({
+                            defaultPath: `response.${ext}`,
+                            filters: [{ name: `${ext.toUpperCase()} Files`, extensions: [ext] }],
+                            content: content
+                        });
+                        if (result.success) {
+                            this.showToast(`Response saved to ${result.path}`, 2000, 'success');
+                        }
+                    } catch (_) {
+                        this.showToast('Failed to save response', 2000, 'error');
+                    }
+                }
+            });
+        }
+
+        // Pretty-print toggle
+        const prettyToggle = document.getElementById('prettyPrintToggle');
+        if (prettyToggle && isJson) {
+            prettyToggle.addEventListener('change', () => {
+                const bodyPane = document.getElementById('responseBodyPane');
+                if (prettyToggle.checked) {
+                    bodyPane.innerHTML = this.highlightJson(bodyDisplay);
+                } else {
+                    bodyPane.innerHTML = `<pre>${this.escapeHtml(rawBody)}</pre>`;
+                }
+            });
+        }
+
+        // Copy individual header buttons
+        panel.querySelectorAll('.header-copy-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const text = btn.dataset.copy;
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(text).then(() => this.showToast('Header copied', 1500, 'success'));
+                }
+            });
+        });
+
         // Tab switching
+        const panes = ['responseBodyPane', 'responseHeadersPane', 'responseTestsPane'];
+        const toolbar = panel.querySelector('.response-toolbar');
         panel.querySelectorAll('.response-tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 panel.querySelectorAll('.response-tab').forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
                 const target = tab.dataset.rtab;
-                document.getElementById('responseBodyPane').style.display = target === 'body' ? 'block' : 'none';
-                document.getElementById('responseHeadersPane').style.display = target === 'headers' ? 'block' : 'none';
+                panes.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.style.display = 'none';
+                });
+                if (target === 'body') {
+                    document.getElementById('responseBodyPane').style.display = 'block';
+                    if (toolbar) toolbar.style.display = 'flex';
+                } else if (target === 'headers') {
+                    document.getElementById('responseHeadersPane').style.display = 'block';
+                    if (toolbar) toolbar.style.display = 'none';
+                } else if (target === 'tests') {
+                    const testsPane = document.getElementById('responseTestsPane');
+                    if (testsPane) testsPane.style.display = 'block';
+                    if (toolbar) toolbar.style.display = 'none';
+                }
             });
         });
+    }
+
+    getStatusDescription(code) {
+        const descriptions = {
+            200: 'OK', 201: 'Created', 202: 'Accepted', 204: 'No Content',
+            301: 'Moved Permanently', 302: 'Found', 304: 'Not Modified',
+            400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found',
+            405: 'Method Not Allowed', 408: 'Request Timeout', 409: 'Conflict',
+            422: 'Unprocessable Entity', 429: 'Too Many Requests',
+            500: 'Internal Server Error', 502: 'Bad Gateway', 503: 'Service Unavailable', 504: 'Gateway Timeout'
+        };
+        return descriptions[code] || '';
+    }
+
+    highlightJson(jsonStr) {
+        // CSS-based JSON syntax highlighting (no dependencies)
+        const escaped = this.escapeHtml(jsonStr);
+        const highlighted = escaped
+            .replace(/"([^"\\]*(\\.[^"\\]*)*)"\s*:/g, '<span class="json-key">"$1"</span>:')
+            .replace(/:\s*"([^"\\]*(\\.[^"\\]*)*)"/g, ': <span class="json-string">"$1"</span>')
+            .replace(/:\s*(-?\d+\.?\d*([eE][+-]?\d+)?)/g, ': <span class="json-number">$1</span>')
+            .replace(/:\s*(true|false)/g, ': <span class="json-boolean">$1</span>')
+            .replace(/:\s*(null)/g, ': <span class="json-null">$1</span>');
+        return `<pre class="json-highlighted">${highlighted}</pre>`;
     }
 
     escapeHtml(str) {
