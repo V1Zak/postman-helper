@@ -1028,6 +1028,13 @@
             font-size: 13px;
         }
 
+        .search-highlight {
+            background-color: var(--accent);
+            color: white;
+            border-radius: 2px;
+            padding: 0 2px;
+        }
+
         /* ===== Test Snippets ===== */
         .snippet-bar {
             display: flex;
@@ -1543,6 +1550,7 @@
                     <div class="filter-toggles">
                         <button class="filter-toggle-btn" id="filterHasTests">Has Tests</button>
                         <button class="filter-toggle-btn" id="filterHasBody">Has Body</button>
+                        <button class="filter-toggle-btn" id="filterRegexToggle" title="Enable regex search">.*</button>
                         <button class="filter-clear-btn" id="filterClearBtn">Clear</button>
                     </div>
                 </div>

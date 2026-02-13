@@ -483,7 +483,7 @@ class AppState {
         this.showLineNumbers = true;
         this.inheritGlobally = true;
         this.bodyViewMode = 'raw';
-        this.filters = { text: '', methods: [], hasTests: false, hasBody: false };
+        this.filters = { text: '', methods: [], hasTests: false, hasBody: false, useRegex: false };
         this.environments = [];
         this.activeEnvironment = null;
         // Initialize inheritance manager with proper fallback
@@ -689,9 +689,13 @@ class PostmanHelperApp {
     setupFilterListeners() {
         const filterText = document.getElementById('filterText');
         if (filterText) {
+            let debounceTimer = null;
             filterText.addEventListener('input', () => {
-                this.state.filters.text = filterText.value.toLowerCase();
-                this.updateCollectionTree();
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    this.state.filters.text = filterText.value.toLowerCase();
+                    this.updateCollectionTree();
+                }, 200);
             });
         }
 
@@ -728,17 +732,28 @@ class PostmanHelperApp {
             });
         }
 
+        const regexToggle = document.getElementById('filterRegexToggle');
+        if (regexToggle) {
+            regexToggle.addEventListener('click', () => {
+                this.state.filters.useRegex = !this.state.filters.useRegex;
+                regexToggle.classList.toggle('active', this.state.filters.useRegex);
+                this.updateCollectionTree();
+            });
+        }
+
         const clearBtn = document.getElementById('filterClearBtn');
         if (clearBtn) {
             clearBtn.addEventListener('click', () => {
-                this.state.filters = { text: '', methods: [], hasTests: false, hasBody: false };
+                this.state.filters = { text: '', methods: [], hasTests: false, hasBody: false, useRegex: false };
                 const filterTextInput = document.getElementById('filterText');
                 if (filterTextInput) filterTextInput.value = '';
                 document.querySelectorAll('.method-chip').forEach(c => c.classList.remove('active'));
                 const ht = document.getElementById('filterHasTests');
                 const hb = document.getElementById('filterHasBody');
+                const rt = document.getElementById('filterRegexToggle');
                 if (ht) ht.classList.remove('active');
                 if (hb) hb.classList.remove('active');
+                if (rt) rt.classList.remove('active');
                 this.updateCollectionTree();
             });
         }
@@ -1527,6 +1542,7 @@ class PostmanHelperApp {
 
         let html = '';
         const filtering = this.hasFiltersActive();
+        const f = this.state.filters;
 
         for (let index = 0; index < this.state.collections.length; index++) {
             const collection = this.state.collections[index];
@@ -1551,7 +1567,10 @@ class PostmanHelperApp {
                     html += '<div class="tree-section">Root Requests:</div>';
                     for (const request of visibleRequests) {
                         const reqActive = this.state.currentRequest === request ? 'active' : '';
-                        html += `<div class="tree-item ${reqActive}" data-type="request" data-id="${request.name}" data-collection-index="${index}" draggable="true"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span><span class="request-name">${request.name}</span></div>`;
+                        const displayName = filtering && f.text
+                            ? this.highlightMatch(request.name, f.text, f.useRegex)
+                            : this.escapeHtml(request.name);
+                        html += `<div class="tree-item ${reqActive}" data-type="request" data-id="${request.name}" data-collection-index="${index}" draggable="true"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span><span class="request-name">${displayName}</span></div>`;
                     }
                 }
             }
@@ -1607,13 +1626,17 @@ class PostmanHelperApp {
 
         // Add folder contents (filtered)
         const filtering = this.hasFiltersActive();
+        const f = this.state.filters;
         if (folder.requests && folder.requests.length > 0) {
             const visibleRequests = filtering
                 ? folder.requests.filter(r => this.matchesFilters(r))
                 : folder.requests;
             for (const request of visibleRequests) {
                 const requestActive = this.state.currentRequest === request ? 'active' : '';
-                html += `<div class="tree-item ${requestActive}" data-type="request" data-id="${request.name}" draggable="true"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span><span class="request-name">${request.name}</span></div>`;
+                const displayName = filtering && f.text
+                    ? this.highlightMatch(request.name, f.text, f.useRegex)
+                    : this.escapeHtml(request.name);
+                html += `<div class="tree-item ${requestActive}" data-type="request" data-id="${request.name}" draggable="true"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span><span class="request-name">${displayName}</span></div>`;
             }
         }
 
@@ -1772,8 +1795,15 @@ class PostmanHelperApp {
 
     matchesFilters(request) {
         const f = this.state.filters;
-        if (f.text && !(request.name.toLowerCase().includes(f.text) || (request.url && request.url.toLowerCase().includes(f.text)) || (request.body && request.body.toLowerCase().includes(f.text)) || (request.tests && request.tests.toLowerCase().includes(f.text)))) {
-            return false;
+        if (f.text) {
+            const matchFn = f.useRegex ? this.regexMatch : this.textMatch;
+            if (!(matchFn(request.name, f.text)
+                || matchFn(request.url, f.text)
+                || matchFn(request.body, f.text)
+                || matchFn(request.tests, f.text)
+                || this.headersMatchText(request.headers, f.text, f.useRegex))) {
+                return false;
+            }
         }
         if (f.methods.length > 0 && !f.methods.includes(request.method)) {
             return false;
@@ -1800,6 +1830,54 @@ class PostmanHelperApp {
             }
         }
         return false;
+    }
+
+    // --- Search helper methods ---
+
+    textMatch(field, text) {
+        return field && field.toLowerCase().includes(text);
+    }
+
+    regexMatch(field, text) {
+        if (!field) return false;
+        try { return new RegExp(text, 'i').test(field); }
+        catch { return false; }
+    }
+
+    headersMatchText(headers, text, useRegex) {
+        if (!headers) return false;
+        const matchFn = useRegex ? this.regexMatch : this.textMatch;
+        if (Array.isArray(headers)) {
+            return headers.some(h =>
+                matchFn(h.key, text) || matchFn(h.value, text)
+            );
+        }
+        if (typeof headers === 'object') {
+            return Object.entries(headers).some(([k, v]) =>
+                matchFn(k, text) || matchFn(String(v), text)
+            );
+        }
+        return false;
+    }
+
+    escapeRegex(str) {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    highlightMatch(text, searchTerm, useRegex) {
+        if (!searchTerm || !text) return this.escapeHtml(text || '');
+        try {
+            const pattern = useRegex ? searchTerm : this.escapeRegex(searchTerm);
+            const regex = new RegExp(`(${pattern})`, 'gi');
+            return this.escapeHtml(text).replace(regex, '<mark class="search-highlight">$1</mark>');
+        } catch {
+            return this.escapeHtml(text);
+        }
     }
 
     findFolderByName(folders, name) {
