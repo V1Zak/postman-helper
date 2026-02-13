@@ -3934,7 +3934,7 @@ class PostmanHelperApp {
         this.updateTabContent();
         this.updateDirtyIndicators();
         
-        alert('Request saved successfully!');
+        this.showToast('Request saved successfully!', 2000, 'success');
     }
 
     deleteRequest() {
@@ -4030,7 +4030,7 @@ class PostmanHelperApp {
         this.state.takeCleanSnapshot(this.state.currentRequest);
         this.updateDirtyIndicators();
 
-        alert('Tests saved successfully!');
+        this.showToast('Tests saved successfully!', 2000, 'success');
     }
 
     // Inheritance Management
@@ -4056,7 +4056,7 @@ class PostmanHelperApp {
             this.state.markAsChanged();
             this.updateInheritanceTab();
         } else {
-            alert('Please enter a valid endpoint URL');
+            this.showToast('Please enter a valid endpoint URL', 2000, 'warning');
         }
     }
 
@@ -4385,14 +4385,14 @@ class PostmanHelperApp {
             }
         } catch (error) {
             console.error('Import error:', error);
-            alert('Error importing collection: ' + error.message);
+            this.showToast('Error importing collection: ' + error.message, 4000, 'error');
             this.analytics.track('error', { message: error.message, context: 'importCollection' });
         }
     }
 
     async exportCollection() {
         if (!this.state.currentCollection) {
-            alert('No collection to export');
+            this.showToast('No collection to export', 2000, 'warning');
             return;
         }
 
@@ -4409,7 +4409,7 @@ class PostmanHelperApp {
                 this.state.clearAllDirty();
                 this.state.updateStatusBar();
                 this.updateDirtyIndicators();
-                alert(`Collection exported successfully to: ${result.path}`);
+                this.showToast(`Collection exported successfully to: ${result.path}`, 3000, 'success');
                 this.analytics.track('collection_exported', {
                     name: this.state.currentCollection.name,
                     requestCount: this.state.currentCollection.requests.length
@@ -4417,7 +4417,7 @@ class PostmanHelperApp {
             }
         } catch (error) {
             console.error('Export error:', error);
-            alert('Error exporting collection: ' + error.message);
+            this.showToast('Error exporting collection: ' + error.message, 4000, 'error');
         }
     }
 
@@ -4611,24 +4611,71 @@ class PostmanHelperApp {
 
     // Toast Notification
     showToast(message, duration = 2000, type = 'info') {
+        // Rate limiting: max 5 visible toasts, queue the rest
+        if (!this._toastQueue) this._toastQueue = [];
+        const MAX_VISIBLE = 5;
+        const visible = document.querySelectorAll('.toast.toast-visible');
+        if (visible.length >= MAX_VISIBLE) {
+            this._toastQueue.push({ message, duration, type });
+            return;
+        }
+
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
-        toast.textContent = message;
+
+        const msgSpan = document.createElement('span');
+        msgSpan.className = 'toast-message';
+        msgSpan.textContent = message;
+        toast.appendChild(msgSpan);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'toast-close';
+        closeBtn.innerHTML = '&times;';
+        closeBtn.setAttribute('aria-label', 'Dismiss');
+        toast.appendChild(closeBtn);
+
         document.body.appendChild(toast);
 
-        // Stack: offset by existing visible toasts
-        const existingToasts = document.querySelectorAll('.toast.toast-visible');
-        const offset = existingToasts.length * 52;
-        toast.style.bottom = `${60 + offset}px`;
+        // Dynamic stacking: compute offset from actual toast heights
+        this._repositionToasts();
+
+        const dismissToast = () => {
+            if (toast._dismissed) return;
+            toast._dismissed = true;
+            clearTimeout(timer);
+            toast.classList.remove('toast-visible');
+            setTimeout(() => {
+                toast.remove();
+                this._repositionToasts();
+                this._drainToastQueue();
+            }, 300);
+        };
+
+        closeBtn.addEventListener('click', dismissToast);
 
         requestAnimationFrame(() => {
             toast.classList.add('toast-visible');
         });
 
-        setTimeout(() => {
-            toast.classList.remove('toast-visible');
-            setTimeout(() => toast.remove(), 300);
-        }, duration);
+        const timer = setTimeout(dismissToast, duration);
+    }
+
+    _repositionToasts() {
+        const toasts = document.querySelectorAll('.toast');
+        let bottom = 60;
+        toasts.forEach(t => {
+            t.style.bottom = `${bottom}px`;
+            bottom += t.offsetHeight + 8;
+        });
+    }
+
+    _drainToastQueue() {
+        if (!this._toastQueue || this._toastQueue.length === 0) return;
+        const visible = document.querySelectorAll('.toast.toast-visible');
+        if (visible.length < 5) {
+            const next = this._toastQueue.shift();
+            this.showToast(next.message, next.duration, next.type);
+        }
     }
 
     // Drag and Drop - find request location in collection tree
