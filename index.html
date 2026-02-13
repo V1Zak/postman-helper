@@ -1003,6 +1003,34 @@
         .toast-warning { border-left: 3px solid #fca130; }
         .toast-info { border-left: 3px solid var(--accent); }
 
+        /* ===== Keyboard Shortcuts Help ===== */
+        .shortcuts-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 16px;
+        }
+        .shortcuts-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        .shortcuts-table td:first-child {
+            width: 100px;
+            text-align: right;
+            padding-right: 16px;
+        }
+        .shortcuts-table kbd {
+            display: inline-block;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-primary);
+            min-width: 28px;
+            text-align: center;
+        }
+
         /* ===== Drag and Drop ===== */
         .tree-item.dragging {
             opacity: 0.4;
@@ -2161,11 +2189,11 @@
     <header>
         <div class="logo">Postman Helper</div>
         <div class="header-actions">
-            <button id="newRequestBtn" class="primary">+ Request</button>
+            <button id="newRequestBtn" class="primary" title="New request (&#8984;N)">+ Request</button>
             <button id="newFolderBtn">+ Folder</button>
             <div class="header-divider"></div>
-            <button id="importBtn">Import</button>
-            <button id="exportBtn" class="primary">Export</button>
+            <button id="importBtn" title="Import collection (&#8984;O)">Import</button>
+            <button id="exportBtn" class="primary" title="Export collection (&#8984;&#8679;E)">Export</button>
             <button id="exportDocsBtn" title="Export API Documentation">Docs</button>
             <div class="header-divider"></div>
             <div class="env-selector-group">
@@ -2177,7 +2205,7 @@
             <div class="header-divider"></div>
             <button id="loadSampleBtn" title="Load sample API collection">Sample</button>
             <button id="analyticsBtn" title="Usage analytics dashboard">Analytics</button>
-            <button id="settingsBtn" title="Settings">&#9881;&#65039;</button>
+            <button id="settingsBtn" title="Settings (&#8984;,)">&#9881;&#65039;</button>
         </div>
     </header>
 
