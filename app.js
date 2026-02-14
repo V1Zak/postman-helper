@@ -2408,6 +2408,109 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = Object.assign(module.exports || {}, { TutorialSystem });
 }
 
+// Autosave sanitisation utilities (#115, #118)
+// Strip prototype-pollution keys from any object tree (recursive, max depth 10)
+function stripDangerousKeys(obj, depth) {
+    if (depth === undefined) depth = 0;
+    if (depth > 10 || obj === null || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) {
+        return obj.map(function (item) { return stripDangerousKeys(item, depth + 1); });
+    }
+    var clean = {};
+    var keys = Object.keys(obj);
+    for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+        clean[k] = stripDangerousKeys(obj[k], depth + 1);
+    }
+    return clean;
+}
+
+// Validate and sanitise an autosave payload before consumption.
+// Returns a safe copy or null if the data is fundamentally invalid.
+function sanitizeAutoSaveData(raw) {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+
+    var data = stripDangerousKeys(raw, 0);
+
+    // version must be a positive number (or absent for v1)
+    if (data.version !== undefined && (typeof data.version !== 'number' || data.version < 0)) {
+        data.version = 1;
+    }
+
+    // collections — must be an array of objects
+    if (data.collections !== undefined) {
+        if (!Array.isArray(data.collections)) {
+            data.collections = [];
+        } else {
+            data.collections = data.collections.filter(function (c) { return c !== null && typeof c === 'object' && !Array.isArray(c); });
+        }
+    }
+
+    // collection (v1 fallback) — must be a plain object
+    if (data.collection !== undefined && (typeof data.collection !== 'object' || data.collection === null || Array.isArray(data.collection))) {
+        delete data.collection;
+    }
+
+    // activeCollectionIndex — must be a non-negative integer
+    if (data.activeCollectionIndex !== undefined) {
+        var idx = parseInt(data.activeCollectionIndex, 10);
+        data.activeCollectionIndex = (isNaN(idx) || idx < 0) ? 0 : idx;
+    }
+
+    // settings — must be a plain object; strip aiApiKey if present
+    if (data.settings !== undefined) {
+        if (typeof data.settings !== 'object' || data.settings === null || Array.isArray(data.settings)) {
+            delete data.settings;
+        } else {
+            delete data.settings.aiApiKey; // never restore key from autosave (#115)
+            // sidebarWidth — must be a reasonable number
+            if (data.settings.sidebarWidth !== undefined) {
+                var sw = parseInt(data.settings.sidebarWidth, 10);
+                data.settings.sidebarWidth = (isNaN(sw) || sw < 100 || sw > 2000) ? undefined : sw;
+            }
+        }
+    }
+
+    // environments — must be an array
+    if (data.environments !== undefined && !Array.isArray(data.environments)) {
+        data.environments = [];
+    }
+
+    // expandedFolders — must be an array of strings
+    if (data.expandedFolders !== undefined) {
+        if (!Array.isArray(data.expandedFolders)) {
+            data.expandedFolders = [];
+        } else {
+            data.expandedFolders = data.expandedFolders.filter(function (f) { return typeof f === 'string'; });
+        }
+    }
+
+    // currentRequestName / currentFolderName — must be strings
+    if (data.currentRequestName !== undefined && typeof data.currentRequestName !== 'string') {
+        delete data.currentRequestName;
+    }
+    if (data.currentFolderName !== undefined && typeof data.currentFolderName !== 'string') {
+        delete data.currentFolderName;
+    }
+
+    // analytics — must be a plain object
+    if (data.analytics !== undefined && (typeof data.analytics !== 'object' || data.analytics === null || Array.isArray(data.analytics))) {
+        delete data.analytics;
+    }
+
+    // inheritance — must be a plain object
+    if (data.inheritance !== undefined && (typeof data.inheritance !== 'object' || data.inheritance === null || Array.isArray(data.inheritance))) {
+        delete data.inheritance;
+    }
+
+    return data;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Object.assign(module.exports || {}, { stripDangerousKeys, sanitizeAutoSaveData });
+}
+
 // AppState class - manages application state
 class AppState {
     constructor() {
@@ -7286,7 +7389,7 @@ class PostmanHelperApp {
                     toastDuration: this.state.toastDuration,
                     confirmBeforeDelete: this.state.confirmBeforeDelete,
                     aiProvider: this.state.aiProvider,
-                    aiApiKey: this.state.aiApiKey,
+                    // aiApiKey intentionally excluded — stored only in localStorage (#115)
                     aiBaseUrl: this.state.aiBaseUrl,
                     aiModel: this.state.aiModel,
                     sidebarWidth: parseInt(getComputedStyle(document.querySelector('.sidebar')).width, 10) || 280
@@ -7316,14 +7419,25 @@ class PostmanHelperApp {
         }
     }
 
-    restoreFromAutoSave(data) {
+    restoreFromAutoSave(rawData) {
         try {
+            // Sanitise & validate the autosave payload (#118, #115)
+            const data = sanitizeAutoSaveData(rawData);
+            if (!data) {
+                console.error('Restore aborted: autosave data failed validation');
+                this.showToast('Failed to restore session');
+                return;
+            }
+
             // Restore settings first
             if (data.settings) {
                 const defaults = AppState.DEFAULT_SETTINGS;
                 for (const key of Object.keys(defaults)) {
+                    if (key === 'aiApiKey') continue; // never restore from autosave (#115)
                     this.state[key] = data.settings[key] !== undefined ? data.settings[key] : defaults[key];
                 }
+                // AI key comes from localStorage settings only (#115)
+                this.state.loadSettings(); // re-loads aiApiKey from localStorage
                 this.applyTheme(this.state.darkMode ? 'dark' : 'light');
                 this.applySettingsToUI();
                 if (data.settings.sidebarWidth) {
