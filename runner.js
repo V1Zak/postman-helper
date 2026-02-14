@@ -106,8 +106,16 @@ class CollectionRunner {
             const response = await this.httpRequest({ method, url, headers, body });
             const responseTime = Date.now() - startTime;
 
-            // Get test script — may be on request.tests or request.events.test
-            const testScript = request.tests || (request.events && request.events.test) || '';
+            // Get test script — may be on request.tests, request.events.test,
+            // or Postman v2.1 event array format: request.event[].listen === 'test'
+            let testScript = request.tests || (request.events && request.events.test) || '';
+            if (!testScript && Array.isArray(request.event)) {
+                const testEvent = request.event.find(e => e.listen === 'test');
+                if (testEvent && testEvent.script) {
+                    const exec = testEvent.script.exec;
+                    testScript = Array.isArray(exec) ? exec.join('\n') : (exec || '');
+                }
+            }
             const testResults = this.runTests(testScript, response, responseTime);
 
             return {
