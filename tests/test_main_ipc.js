@@ -253,14 +253,17 @@ describe('Security: validateURLForSSRF', { skip: !helpers }, () => {
         assert.equal(result.allowed, false);
     });
 
-    it('allows https:// to public host', async () => {
-        const result = await helpers.validateURLForSSRF(new URL('https://api.example.com/v1'));
+    it('allows https:// to public IP', async () => {
+        // Use raw IP to avoid DNS dependency in tests (#116)
+        const result = await helpers.validateURLForSSRF(new URL('https://8.8.8.8/v1'));
         assert.equal(result.allowed, true);
+        assert.equal(result.ip, '8.8.8.8');
     });
 
-    it('allows http:// to public host', async () => {
-        const result = await helpers.validateURLForSSRF(new URL('http://api.example.com/v1'));
+    it('allows http:// to public IP', async () => {
+        const result = await helpers.validateURLForSSRF(new URL('http://1.1.1.1/v1'));
         assert.equal(result.allowed, true);
+        assert.equal(result.ip, '1.1.1.1');
     });
 
     it('blocks http://127.0.0.1 (raw IP loopback)', async () => {
