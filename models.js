@@ -9,6 +9,7 @@ class PostmanRequest {
         this.body = body || '';
         this.description = description || '';
         this.events = events || { prerequest: '', test: '' };
+        this.tests = (events && events.test) ? events.test : '';
         this.uuid = this.generateUUID();
         this._history = [];
         this._maxHistoryDepth = 20;
@@ -76,6 +77,7 @@ class PostmanRequest {
             body: this.body,
             description: this.description,
             events: this.events,
+            tests: this.tests || '',
             uuid: this.uuid
         };
     }
@@ -131,12 +133,13 @@ class PostmanRequest {
         if (this.description) {
             item.request.description = this.description;
         }
-        // Add events
+        // Add events — check both this.tests and this.events.test (#78)
         const events = [];
-        if (this.tests) {
+        const testScript = this.tests || (this.events && this.events.test) || '';
+        if (testScript) {
             events.push({
                 listen: 'test',
-                script: { type: 'text/javascript', exec: this.tests.split('\n') }
+                script: { type: 'text/javascript', exec: testScript.split('\n') }
             });
         }
         if (this.events && this.events.prerequest) {
