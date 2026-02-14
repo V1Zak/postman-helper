@@ -46,6 +46,7 @@ class ConsoleReporter {
 class JUnitReporter {
     format(results) {
         const esc = (s) => String(s || '')
+            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
@@ -59,7 +60,7 @@ class JUnitReporter {
             (sum, r) => sum + Math.max(r.testResults.total, r.error ? 1 : 0), 0
         );
         const totalFailures = results.requests.reduce(
-            (sum, r) => sum + r.testResults.failures, 0
+            (sum, r) => sum + r.testResults.failures + (r.error ? 1 : 0), 0
         );
         const totalErrors = results.errors || 0;
 
@@ -86,11 +87,10 @@ class JUnitReporter {
                 lines.push('    </testcase>');
             } else {
                 for (const test of req.testResults.results) {
-                    const testTime = (req.responseTime / 1000).toFixed(3);
                     if (test.passed) {
-                        lines.push(`    <testcase name="${esc(test.name)}" time="${testTime}"/>`);
+                        lines.push(`    <testcase name="${esc(test.name)}" time="0.000"/>`);
                     } else {
-                        lines.push(`    <testcase name="${esc(test.name)}" time="${testTime}">`);
+                        lines.push(`    <testcase name="${esc(test.name)}" time="0.000">`);
                         const msg = test.error ? esc(test.error) : 'Assertion failed';
                         lines.push(`      <failure message="${msg}"/>`);
                         lines.push('    </testcase>');

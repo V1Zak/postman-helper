@@ -6,7 +6,7 @@ const path = require('path');
 const { CollectionRunner } = require('./runner');
 const { getReporter } = require('./reporters');
 
-const VERSION = '1.0.0';
+const VERSION = require('./package.json').version;
 
 /**
  * Parse CLI arguments into an options object.
@@ -195,8 +195,8 @@ async function main(args) {
     }
 
     // Exit code: 0 = all pass, 1 = failures/errors
-    const exitCode = (results.failures > 0 || results.errors > 0) ? 1 : 0;
-    process.exit(exitCode);
+    // Use process.exitCode instead of process.exit() to let stdout flush
+    process.exitCode = (results.failures > 0 || results.errors > 0) ? 1 : 0;
 }
 
 // Run if invoked directly

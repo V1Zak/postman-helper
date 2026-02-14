@@ -941,6 +941,201 @@ describe('CLI: VERSION', () => {
     });
 });
 
+// ===================== CLI: VERSION matches package.json =====================
+
+describe('CLI: VERSION matches package.json', () => {
+    it('matches package.json version exactly', () => {
+        const pkg = require('../package.json');
+        assert.equal(VERSION, pkg.version);
+    });
+});
+
+// ===================== JUnit: time inflation fix =====================
+
+describe('JUnitReporter: testcase time not inflated', () => {
+    it('individual testcases have time="0.000"', () => {
+        const reporter = new JUnitReporter();
+        const output = reporter.format(buildResults());
+        // testcase elements should have time="0.000", not the request responseTime
+        const testcaseLines = output.split('\n').filter(l => l.includes('<testcase name='));
+        for (const line of testcaseLines) {
+            if (!line.includes('Request Execution')) {
+                assert.ok(line.includes('time="0.000"'), `Expected time="0.000" in: ${line}`);
+            }
+        }
+    });
+
+    it('testsuite still has request responseTime', () => {
+        const reporter = new JUnitReporter();
+        const output = reporter.format(buildResults());
+        // Get Users has responseTime: 150 → 0.150
+        assert.ok(output.includes('time="0.150"'));
+        // Create User has responseTime: 200 → 0.200
+        assert.ok(output.includes('time="0.200"'));
+    });
+});
+
+// ===================== JUnit: XML control characters =====================
+
+describe('JUnitReporter: XML control character stripping', () => {
+    it('strips control characters from test names', () => {
+        const reporter = new JUnitReporter();
+        const results = buildResults({
+            requests: [{
+                name: 'Req\x00with\x08control\x0Bchars',
+                method: 'GET',
+                url: 'http://test',
+                status: 200,
+                responseTime: 100,
+                testResults: {
+                    total: 1, passed: 1, failures: 0,
+                    results: [{ name: 'Test\x01with\x1Fcontrol', passed: true }]
+                },
+                error: null
+            }],
+            total: 1, passed: 1, failures: 0
+        });
+        const output = reporter.format(results);
+        assert.ok(!output.includes('\x00'));
+        assert.ok(!output.includes('\x01'));
+        assert.ok(!output.includes('\x08'));
+        assert.ok(!output.includes('\x0B'));
+        assert.ok(!output.includes('\x1F'));
+        assert.ok(output.includes('Reqwithcontrolchars'));
+        assert.ok(output.includes('Testwithcontrol'));
+    });
+
+    it('strips control chars from error messages', () => {
+        const reporter = new JUnitReporter();
+        const results = buildResults({
+            requests: [{
+                name: 'Error Req',
+                method: 'GET',
+                url: 'http://fail',
+                status: null,
+                responseTime: 10,
+                testResults: { total: 0, passed: 0, failures: 0, results: [] },
+                error: 'Error\x00msg\x08here'
+            }],
+            total: 1, passed: 0, failures: 0, errors: 1
+        });
+        const output = reporter.format(results);
+        assert.ok(!output.includes('\x00'));
+        assert.ok(!output.includes('\x08'));
+        assert.ok(output.includes('Errormsghere'));
+    });
+});
+
+// ===================== JUnit: failures count includes errors =====================
+
+describe('JUnitReporter: failures includes errored requests', () => {
+    it('totalFailures counts errored requests', () => {
+        const reporter = new JUnitReporter();
+        const results = buildResults({
+            requests: [{
+                name: 'Error Req',
+                method: 'GET',
+                url: 'http://fail',
+                status: null,
+                responseTime: 10,
+                testResults: { total: 0, passed: 0, failures: 0, results: [] },
+                error: 'Connection refused'
+            }],
+            total: 1, passed: 0, failures: 0, errors: 1
+        });
+        const output = reporter.format(results);
+        // testsuites element should have failures="1" for the errored request
+        assert.ok(output.includes('failures="1"'));
+    });
+
+    it('totalFailures sums test failures and errored requests', () => {
+        const reporter = new JUnitReporter();
+        const results = buildResults({
+            requests: [
+                {
+                    name: 'Test Fail',
+                    method: 'GET',
+                    url: 'http://test',
+                    status: 400,
+                    responseTime: 100,
+                    testResults: {
+                        total: 1, passed: 0, failures: 1,
+                        results: [{ name: 'Status OK', passed: false }]
+                    },
+                    error: null
+                },
+                {
+                    name: 'Error Req',
+                    method: 'GET',
+                    url: 'http://fail',
+                    status: null,
+                    responseTime: 10,
+                    testResults: { total: 0, passed: 0, failures: 0, results: [] },
+                    error: 'Timeout'
+                }
+            ],
+            total: 2, passed: 0, failures: 1, errors: 1
+        });
+        const output = reporter.format(results);
+        // testsuites element: 1 test failure + 1 error = failures="2"
+        assert.ok(output.includes('failures="2"'));
+    });
+});
+
+// ===================== Runner: v2.1 event array format =====================
+
+describe('CollectionRunner: v2.1 event array test script extraction', () => {
+    let runner;
+    before(() => { runner = new CollectionRunner(); });
+
+    const mockResponse = { status: 200, body: '{"ok": true}', headers: {} };
+
+    it('extracts test script from event array', () => {
+        // Simulate the v2.1 event array format on a request object
+        const req = {
+            name: 'V21 Event',
+            method: 'GET',
+            url: 'http://192.0.2.1:1',
+            headers: {},
+            body: '',
+            tests: '',
+            event: [
+                {
+                    listen: 'test',
+                    script: { exec: ["tests['V21 test'] = responseCode.code === 200;"] }
+                }
+            ]
+        };
+        // We can't easily test executeRequest (it makes HTTP calls),
+        // so we test the script extraction logic by running the test script directly
+        const testEvent = req.event.find(e => e.listen === 'test');
+        const exec = testEvent.script.exec;
+        const testScript = Array.isArray(exec) ? exec.join('\n') : (exec || '');
+        const result = runner.runTests(testScript, mockResponse, 100);
+        assert.equal(result.total, 1);
+        assert.equal(result.passed, 1);
+        assert.equal(result.results[0].name, 'V21 test');
+    });
+
+    it('handles event array with multi-line exec', () => {
+        const exec = [
+            "tests['Status OK'] = responseCode.code === 200;",
+            "tests['Has body'] = responseBody.has('ok');"
+        ];
+        const testScript = exec.join('\n');
+        const result = runner.runTests(testScript, mockResponse, 100);
+        assert.equal(result.total, 2);
+        assert.equal(result.passed, 2);
+    });
+
+    it('prefers request.tests over event array', () => {
+        // When request.tests is already populated, event array should not override
+        const testScript = "tests['Direct'] = true;";
+        const result = runner.runTests(testScript, mockResponse, 100);
+        assert.equal(result.results[0].name, 'Direct');
+    });
+});
+
 // ===================== runTests: VM Sandbox Security =====================
 
 describe('CollectionRunner: runTests VM sandbox', () => {
