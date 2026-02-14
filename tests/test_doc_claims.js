@@ -33,8 +33,12 @@ describe('CLAUDE.md: models.js PostmanRequest', () => {
         assert.equal(typeof PostmanRequest.fromJSON, 'function');
     });
 
-    it('has generateUUID() method', () => {
-        assert.equal(typeof PostmanRequest.prototype.generateUUID, 'function');
+    it('has generateUUID() available (shared utility, #122)', () => {
+        // generateUUID is now a shared module-level function, not an instance method
+        const { generateUUID } = require('../models');
+        assert.equal(typeof generateUUID, 'function');
+        const uuid = generateUUID();
+        assert.match(uuid, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     });
 });
 

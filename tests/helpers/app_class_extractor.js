@@ -12,10 +12,13 @@ function extractAppClasses() {
     const lines = src.split('\n');
 
     // All model classes are in one contiguous block:
-    // from "Request = class {" to "// Custom Dialog System"
+    // from "function generateUUID()" (or "Request = class {") to "// Custom Dialog System"
     let blockStart = -1;
     let blockEnd = -1;
     for (let i = 0; i < lines.length; i++) {
+        if (lines[i].match(/^function generateUUID\(\)/) && blockStart === -1) {
+            blockStart = i;
+        }
         if (lines[i].match(/^Request = class \{/) && blockStart === -1) {
             blockStart = i;
         }
