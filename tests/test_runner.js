@@ -1376,6 +1376,42 @@ describe('CollectionRunner: substituteVars with prototype keys', () => {
     });
 });
 
+// ===================== substituteVars: dots and hyphens (#128) =====================
+
+describe('CollectionRunner: substituteVars with dots and hyphens (#128)', () => {
+    let runner;
+    before(() => { runner = new CollectionRunner(); });
+
+    it('substitutes variable names with dots', () => {
+        const result = runner.substituteVars('{{api.host}}/users', { 'api.host': 'https://example.com' });
+        assert.equal(result, 'https://example.com/users');
+    });
+
+    it('substitutes variable names with hyphens', () => {
+        const result = runner.substituteVars('{{base-url}}/api', { 'base-url': 'https://example.com' });
+        assert.equal(result, 'https://example.com/api');
+    });
+
+    it('substitutes variable names with dots, hyphens, and underscores', () => {
+        const result = runner.substituteVars('{{my.api-host_name}}', { 'my.api-host_name': 'localhost' });
+        assert.equal(result, 'localhost');
+    });
+
+    it('leaves unresolved dotted variables intact', () => {
+        const result = runner.substituteVars('{{api.host}}', {});
+        assert.equal(result, '{{api.host}}');
+    });
+
+    it('handles multiple dotted/hyphenated vars in one string', () => {
+        const result = runner.substituteVars('{{api.proto}}://{{api.host}}:{{api.port}}', {
+            'api.proto': 'https',
+            'api.host': 'example.com',
+            'api.port': '8443'
+        });
+        assert.equal(result, 'https://example.com:8443');
+    });
+});
+
 // ===================== Integration: Runner + Reporters =====================
 
 describe('Integration: Runner results through reporters', () => {

@@ -265,7 +265,8 @@ class CollectionRunner {
      */
     substituteVars(str, vars) {
         if (!str || typeof str !== 'string') return str || '';
-        return str.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+        // Support dots, hyphens, and underscores in variable names (#128)
+        return str.replace(/\{\{([\w.\-]+)\}\}/g, (match, key) => {
             return Object.hasOwn(vars, key) ? vars[key] : match;
         });
     }
