@@ -1,6 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const fsp = fs.promises
+const dns = require('dns')
+const net = require('net')
 
 // Load environment variables
 require('dotenv').config()
@@ -16,11 +19,94 @@ const config = {
     logLevel: process.env.LOG_LEVEL || 'info'
 }
 
-console.log('🚀 Postman Helper starting with config:', {
+console.log('\uD83D\uDE80 Postman Helper starting with config:', {
     modelName: config.modelName,
     debugMode: config.debugMode,
     logLevel: config.logLevel
 })
+
+// ===== Security: SSRF Protection =====
+const MAX_RESPONSE_SIZE = 50 * 1024 * 1024 // 50 MB
+const MAX_AUTOSAVE_SIZE = 50 * 1024 * 1024 // 50 MB
+const MAX_PLUGIN_SOURCE_SIZE = 1 * 1024 * 1024 // 1 MB
+
+/**
+ * Check if an IP address is private/loopback/link-local.
+ * Returns true if the IP should be blocked for SSRF protection.
+ */
+function isPrivateIP(ip) {
+  // IPv4 loopback
+  if (ip === '127.0.0.1' || ip === 'localhost') return true
+  // IPv6 loopback
+  if (ip === '::1' || ip === '::ffff:127.0.0.1') return true
+  // IPv4 private ranges
+  if (/^10\./.test(ip)) return true
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true
+  if (/^192\.168\./.test(ip)) return true
+  // Link-local
+  if (/^169\.254\./.test(ip)) return true
+  // IPv4-mapped IPv6 private
+  if (/^::ffff:10\./.test(ip)) return true
+  if (/^::ffff:172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true
+  if (/^::ffff:192\.168\./.test(ip)) return true
+  if (/^::ffff:169\.254\./.test(ip)) return true
+  // IPv6 private ranges
+  if (/^f[cd]/i.test(ip)) return true // fc00::/7 unique local
+  if (/^fe[89ab]/i.test(ip)) return true // fe80::/10 link-local
+  // Cloud metadata endpoints
+  if (ip === '169.254.169.254') return true
+  return false
+}
+
+/**
+ * Resolve hostname to IP and check if it's private.
+ * Returns a promise that resolves to { allowed: boolean, error?: string }.
+ */
+function validateURLForSSRF(parsedUrl) {
+  return new Promise((resolve) => {
+    // Only allow http and https
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      return resolve({ allowed: false, error: 'Only http and https protocols are allowed' })
+    }
+
+    const hostname = parsedUrl.hostname
+
+    // Check if hostname is a raw IP
+    if (net.isIP(hostname)) {
+      if (isPrivateIP(hostname)) {
+        return resolve({ allowed: false, error: 'Requests to private/loopback addresses are blocked' })
+      }
+      return resolve({ allowed: true })
+    }
+
+    // Resolve hostname to check actual IPs
+    dns.lookup(hostname, { all: true }, (err, addresses) => {
+      if (err) {
+        // Let the actual request handle DNS errors
+        return resolve({ allowed: true })
+      }
+      for (const addr of addresses) {
+        if (isPrivateIP(addr.address)) {
+          return resolve({ allowed: false, error: 'Requests to private/loopback addresses are blocked (resolved ' + hostname + ' to ' + addr.address + ')' })
+        }
+      }
+      resolve({ allowed: true })
+    })
+  })
+}
+
+// ===== Security: Path Traversal Protection =====
+const RESOLVED_PLUGINS_DIR = path.resolve(path.join(require('os').homedir(), '.postman-helper', 'plugins'))
+
+/**
+ * Validate that a resolved path is within the plugins directory.
+ * Uses path.sep suffix to prevent prefix bypass (e.g., /plugins-evil).
+ */
+function isWithinPluginsDir(resolvedPath) {
+  const normalizedPlugins = RESOLVED_PLUGINS_DIR + path.sep
+  const normalizedPath = path.resolve(resolvedPath) + path.sep
+  return normalizedPath.startsWith(normalizedPlugins) || path.resolve(resolvedPath) === RESOLVED_PLUGINS_DIR
+}
 
 // ===== Window State Persistence =====
 const WINDOW_STATE_FILE = path.join(require('os').homedir(), '.postman-helper', 'window-state.json')
@@ -55,6 +141,35 @@ function saveWindowState(win) {
   }
 }
 
+/**
+ * Validate that saved window position is visible on at least one connected display.
+ * Returns corrected position or null to use defaults.
+ */
+function validateWindowPosition(saved) {
+  if (!saved || saved.x == null || saved.y == null) return null
+  try {
+    const displays = screen.getAllDisplays()
+    const windowRight = saved.x + (saved.width || 1200)
+    const windowBottom = saved.y + (saved.height || 800)
+
+    // Check if at least 100px of the window is visible on any display
+    const minVisible = 100
+    for (const display of displays) {
+      const { x, y, width, height } = display.workArea
+      const overlapX = Math.min(windowRight, x + width) - Math.max(saved.x, x)
+      const overlapY = Math.min(windowBottom, y + height) - Math.max(saved.y, y)
+      if (overlapX >= minVisible && overlapY >= minVisible) {
+        return { x: saved.x, y: saved.y }
+      }
+    }
+    // Window is off-screen, don't restore position
+    return null
+  } catch (e) {
+    // screen API may not be available in tests; fall through
+    return { x: saved.x, y: saved.y }
+  }
+}
+
 let mainWindow
 
 function createWindow() {
@@ -73,10 +188,11 @@ function createWindow() {
     }
   }
 
-  // Restore position if saved and valid
-  if (saved && saved.x != null && saved.y != null) {
-    windowOptions.x = saved.x
-    windowOptions.y = saved.y
+  // Restore position if saved and visible on a connected display
+  const validPos = validateWindowPosition(saved)
+  if (validPos) {
+    windowOptions.x = validPos.x
+    windowOptions.y = validPos.y
   }
 
   mainWindow = new BrowserWindow(windowOptions)
@@ -146,7 +262,7 @@ ipcMain.handle('save-file', async (event, data) => {
     })
 
     if (!result.canceled && result.filePath) {
-      fs.writeFileSync(result.filePath, content)
+      await fsp.writeFile(result.filePath, content)
       return { success: true, path: result.filePath }
     }
     
@@ -164,7 +280,7 @@ ipcMain.handle('open-file', async (event, options) => {
     })
 
     if (!result.canceled && result.filePaths.length > 0) {
-      const content = fs.readFileSync(result.filePaths[0], 'utf-8')
+      const content = await fsp.readFile(result.filePaths[0], 'utf-8')
       return { success: true, path: result.filePaths[0], content: content }
     }
 
@@ -181,6 +297,13 @@ ipcMain.handle('send-request', async (event, options) => {
 
   try {
     const parsedUrl = new URL(url)
+
+    // SSRF protection: validate URL scheme and resolved IPs
+    const ssrfCheck = await validateURLForSSRF(parsedUrl)
+    if (!ssrfCheck.allowed) {
+      return { success: false, error: ssrfCheck.error, time: Date.now() - startTime }
+    }
+
     const httpModule = parsedUrl.protocol === 'https:' ? require('https') : require('http')
 
     return new Promise((resolve) => {
@@ -195,7 +318,22 @@ ipcMain.handle('send-request', async (event, options) => {
 
       const req = httpModule.request(reqOptions, (res) => {
         const chunks = []
-        res.on('data', (chunk) => chunks.push(chunk))
+        let totalSize = 0
+
+        res.on('data', (chunk) => {
+          totalSize += chunk.length
+          if (totalSize > MAX_RESPONSE_SIZE) {
+            res.destroy()
+            resolve({
+              success: false,
+              error: 'Response body exceeded ' + (MAX_RESPONSE_SIZE / 1024 / 1024) + 'MB limit',
+              time: Date.now() - startTime
+            })
+            return
+          }
+          chunks.push(chunk)
+        })
+
         res.on('end', () => {
           const elapsed = Date.now() - startTime
           const bodyStr = Buffer.concat(chunks).toString('utf-8')
@@ -211,6 +349,10 @@ ipcMain.handle('send-request', async (event, options) => {
             body: bodyStr,
             time: elapsed
           })
+        })
+
+        res.on('error', (error) => {
+          resolve({ success: false, error: 'Response error: ' + error.message, time: Date.now() - startTime })
         })
       })
 
@@ -239,8 +381,12 @@ const AUTOSAVE_FILE = path.join(AUTOSAVE_DIR, 'autosave.json')
 
 ipcMain.handle('auto-save', async (event, data) => {
   try {
-    fs.mkdirSync(AUTOSAVE_DIR, { recursive: true })
-    fs.writeFileSync(AUTOSAVE_FILE, JSON.stringify(data, null, 2), 'utf-8')
+    const serialized = JSON.stringify(data, null, 2)
+    if (serialized.length > MAX_AUTOSAVE_SIZE) {
+      return { success: false, error: 'Auto-save data exceeds ' + (MAX_AUTOSAVE_SIZE / 1024 / 1024) + 'MB limit' }
+    }
+    await fsp.mkdir(AUTOSAVE_DIR, { recursive: true })
+    await fsp.writeFile(AUTOSAVE_FILE, serialized, 'utf-8')
     return { success: true }
   } catch (error) {
     return { success: false, error: error.message }
@@ -249,8 +395,12 @@ ipcMain.handle('auto-save', async (event, data) => {
 
 ipcMain.handle('auto-load', async () => {
   try {
-    if (!fs.existsSync(AUTOSAVE_FILE)) return { success: false }
-    const content = fs.readFileSync(AUTOSAVE_FILE, 'utf-8')
+    try {
+      await fsp.access(AUTOSAVE_FILE)
+    } catch {
+      return { success: false }
+    }
+    const content = await fsp.readFile(AUTOSAVE_FILE, 'utf-8')
     const data = JSON.parse(content)
     return { success: true, data }
   } catch (error) {
@@ -260,7 +410,12 @@ ipcMain.handle('auto-load', async () => {
 
 ipcMain.handle('clear-autosave', async () => {
   try {
-    if (fs.existsSync(AUTOSAVE_FILE)) fs.unlinkSync(AUTOSAVE_FILE)
+    try {
+      await fsp.access(AUTOSAVE_FILE)
+      await fsp.unlink(AUTOSAVE_FILE)
+    } catch {
+      // File doesn't exist — that's fine
+    }
     return { success: true }
   } catch (error) {
     return { success: false, error: error.message }
@@ -272,8 +427,12 @@ const PLUGINS_DIR = path.join(require('os').homedir(), '.postman-helper', 'plugi
 
 ipcMain.handle('list-plugins', async () => {
   try {
-    if (!fs.existsSync(PLUGINS_DIR)) return { success: true, plugins: [] }
-    const entries = fs.readdirSync(PLUGINS_DIR, { withFileTypes: true })
+    try {
+      await fsp.access(PLUGINS_DIR)
+    } catch {
+      return { success: true, plugins: [] }
+    }
+    const entries = await fsp.readdir(PLUGINS_DIR, { withFileTypes: true })
     const dirs = entries
       .filter(d => d.isDirectory())
       .map(d => path.join(PLUGINS_DIR, d.name))
@@ -286,15 +445,22 @@ ipcMain.handle('list-plugins', async () => {
 ipcMain.handle('read-plugin-manifest', async (event, dir) => {
   try {
     const resolved = path.resolve(dir)
-    // Security: ensure path is within plugins directory
-    if (!resolved.startsWith(path.resolve(PLUGINS_DIR))) {
+    // Security: ensure path is strictly within plugins directory (path.sep suffix prevents prefix bypass)
+    if (!isWithinPluginsDir(resolved)) {
       return { success: false, error: 'Invalid plugin path' }
     }
     const manifestPath = path.join(resolved, 'manifest.json')
-    if (!fs.existsSync(manifestPath)) {
+    // Verify real path to prevent symlink attacks
+    let realManifestPath
+    try {
+      realManifestPath = await fsp.realpath(manifestPath)
+    } catch {
       return { success: false, error: 'manifest.json not found' }
     }
-    const content = fs.readFileSync(manifestPath, 'utf-8')
+    if (!isWithinPluginsDir(path.dirname(realManifestPath))) {
+      return { success: false, error: 'Invalid plugin path (symlink escape)' }
+    }
+    const content = await fsp.readFile(realManifestPath, 'utf-8')
     const manifest = JSON.parse(content)
     return { success: true, manifest }
   } catch (error) {
@@ -304,15 +470,30 @@ ipcMain.handle('read-plugin-manifest', async (event, dir) => {
 
 ipcMain.handle('load-plugin', async (event, dir, mainFile) => {
   try {
+    // Reject path traversal in mainFile (e.g., "../../../etc/passwd")
+    if (typeof mainFile !== 'string' || mainFile.includes('..') || path.isAbsolute(mainFile)) {
+      return { success: false, error: 'Invalid plugin file path' }
+    }
     const resolved = path.resolve(dir, mainFile)
-    // Security: ensure path is within plugins directory
-    if (!resolved.startsWith(path.resolve(PLUGINS_DIR))) {
+    // Security: ensure path is strictly within plugins directory
+    if (!isWithinPluginsDir(resolved)) {
       return { success: false, error: 'Invalid plugin path' }
     }
-    if (!fs.existsSync(resolved)) {
+    // Verify real path to prevent symlink attacks
+    let realPath
+    try {
+      realPath = await fsp.realpath(resolved)
+    } catch {
       return { success: false, error: 'Plugin main file not found' }
     }
-    const source = fs.readFileSync(resolved, 'utf-8')
+    if (!isWithinPluginsDir(realPath)) {
+      return { success: false, error: 'Invalid plugin path (symlink escape)' }
+    }
+    const stat = await fsp.stat(realPath)
+    if (stat.size > MAX_PLUGIN_SOURCE_SIZE) {
+      return { success: false, error: 'Plugin file exceeds ' + (MAX_PLUGIN_SOURCE_SIZE / 1024) + 'KB limit' }
+    }
+    const source = await fsp.readFile(realPath, 'utf-8')
     return { success: true, source }
   } catch (error) {
     return { success: false, error: error.message }
@@ -335,8 +516,9 @@ try {
 }
 
 // Input validation helper for IPC handlers (#60)
+// Rejects arrays (typeof [] === 'object') and non-objects
 function validateAIInput(data) {
-  return data && typeof data === 'object'
+  return data && typeof data === 'object' && !Array.isArray(data)
 }
 
 ipcMain.handle('ai-is-enabled', async () => {
@@ -416,7 +598,7 @@ ipcMain.handle('ai-update-config', async (event, newConfig) => {
 ipcMain.handle('ai-test-connection', async (event, testConfig) => {
   try {
     // If testConfig provided, create a temporary service to test with
-    if (testConfig && typeof testConfig === 'object' && testConfig.chatApiKey) {
+    if (testConfig && typeof testConfig === 'object' && !Array.isArray(testConfig) && testConfig.chatApiKey) {
       const { AIService } = require('./ai')
       const tempService = new AIService({
         chatApiKey: testConfig.chatApiKey,
