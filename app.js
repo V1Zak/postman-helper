@@ -16,8 +16,17 @@ Request = class {
         this.description = description || '';
         this.events = events || { prerequest: '', test: '' };
         this.tests = (events && events.test) ? events.test : '';
+        this.uuid = this.generateUUID();
         this._history = [];
         this._maxHistoryDepth = 20;
+    }
+
+    generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
     }
 
     takeSnapshot() {
@@ -2455,7 +2464,8 @@ class AppState {
         if (collection && !this.collections.includes(collection)) {
             this.collections.push(collection);
         }
-        this.unsavedChanges = false;
+        // Note: do NOT reset unsavedChanges here — it is managed explicitly
+        // by save/export operations to avoid silently discarding dirty state (#83)
     }
 
     addCollection(collection) {
@@ -2585,19 +2595,19 @@ class AppState {
         this.saveSettings();
     }
 
-    markRequestDirty(requestName) {
-        if (!requestName) return;
-        this._dirtyRequests.add(requestName);
+    markRequestDirty(requestId) {
+        if (!requestId) return;
+        this._dirtyRequests.add(requestId);
         this.markAsChanged();
     }
 
-    markRequestClean(requestName) {
-        if (!requestName) return;
-        this._dirtyRequests.delete(requestName);
+    markRequestClean(requestId) {
+        if (!requestId) return;
+        this._dirtyRequests.delete(requestId);
     }
 
-    isRequestDirty(requestName) {
-        return this._dirtyRequests.has(requestName);
+    isRequestDirty(requestId) {
+        return this._dirtyRequests.has(requestId);
     }
 
     clearAllDirty() {
@@ -2606,8 +2616,8 @@ class AppState {
     }
 
     takeCleanSnapshot(request) {
-        if (!request || !request.name) return;
-        this._cleanSnapshots.set(request.name, {
+        if (!request || !request.uuid) return;
+        this._cleanSnapshots.set(request.uuid, {
             method: request.method || 'GET',
             url: request.url || '',
             headers: JSON.stringify(request.headers || {}),
@@ -2618,8 +2628,8 @@ class AppState {
     }
 
     hasRequestChanged(request) {
-        if (!request || !request.name) return false;
-        const snapshot = this._cleanSnapshots.get(request.name);
+        if (!request || !request.uuid) return false;
+        const snapshot = this._cleanSnapshots.get(request.uuid);
         if (!snapshot) return false;
         return (request.method || 'GET') !== snapshot.method
             || (request.url || '') !== snapshot.url
@@ -3794,8 +3804,7 @@ class PostmanHelperApp {
         DialogSystem.showPrompt('Enter collection name:', 'New Collection', (name) => {
             if (name) {
                 const col = new Collection(name);
-                this.state.addCollection(col);
-                this.state.currentCollection = col;
+                this.state.setCurrentCollection(col);
                 this.state.currentRequest = null;
                 this.state.currentFolder = null;
                 this.updateCollectionTree();
@@ -3896,8 +3905,8 @@ class PostmanHelperApp {
                         const displayName = filtering && f.text
                             ? this.highlightMatch(request.name, f.text, f.useRegex)
                             : this.escapeHtml(request.name);
-                        const dirtyDot = this.state.isRequestDirty(request.name) ? '<span class="dirty-indicator" aria-label="unsaved changes">\u25CF</span>' : '';
-                        html += `<div class="tree-item ${reqActive}" data-type="request" data-id="${request.name}" data-collection-index="${index}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
+                        const dirtyDot = this.state.isRequestDirty(request.uuid) ? '<span class="dirty-indicator" aria-label="unsaved changes">\u25CF</span>' : '';
+                        html += `<div class="tree-item ${reqActive}" data-type="request" data-id="${request.name}" data-uuid="${request.uuid || ''}" data-collection-index="${index}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
                     }
                 }
             }
@@ -3971,8 +3980,8 @@ class PostmanHelperApp {
                 const displayName = filtering && f.text
                     ? this.highlightMatch(request.name, f.text, f.useRegex)
                     : this.escapeHtml(request.name);
-                const dirtyDot = this.state.isRequestDirty(request.name) ? '<span class="dirty-indicator" aria-label="unsaved changes">\u25CF</span>' : '';
-                html += `<div class="tree-item ${requestActive}" data-type="request" data-id="${request.name}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
+                const dirtyDot = this.state.isRequestDirty(request.uuid) ? '<span class="dirty-indicator" aria-label="unsaved changes">\u25CF</span>' : '';
+                html += `<div class="tree-item ${requestActive}" data-type="request" data-id="${request.name}" data-uuid="${request.uuid || ''}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
             }
         }
 
@@ -4140,12 +4149,12 @@ class PostmanHelperApp {
                     };
 
                     // Warn if switching away from a dirty request
-                    if (current && current !== request && this.state.isRequestDirty(current.name)) {
+                    if (current && current !== request && this.state.isRequestDirty(current.uuid)) {
                         DialogSystem.showConfirm(
                             `"${current.name}" has unsaved changes. Switch anyway?`,
                             (confirmed) => {
                                 if (confirmed) {
-                                    this.state.markRequestClean(current.name);
+                                    this.state.markRequestClean(current.uuid);
                                     switchToRequest();
                                 }
                             }
@@ -4335,7 +4344,7 @@ class PostmanHelperApp {
     markCurrentRequestDirty() {
         const req = this.state.currentRequest;
         if (!req) return;
-        this.state.markRequestDirty(req.name);
+        this.state.markRequestDirty(req.uuid);
         this.updateDirtyIndicators();
     }
 
@@ -4344,17 +4353,17 @@ class PostmanHelperApp {
         const requestTabBtn = document.querySelector('.tab[data-tab="request"]');
         if (requestTabBtn) {
             const isDirty = this.state.currentRequest &&
-                this.state.isRequestDirty(this.state.currentRequest.name);
+                this.state.isRequestDirty(this.state.currentRequest.uuid);
             requestTabBtn.textContent = isDirty ? '● Request' : 'Request';
         }
 
         // Update dirty dots in tree (lightweight — just toggle existing spans)
         document.querySelectorAll('.tree-item[data-type="request"]').forEach(item => {
-            const reqName = item.dataset.id;
+            const reqUuid = item.dataset.uuid;
             const nameSpan = item.querySelector('.request-name');
             if (!nameSpan) return;
             const existingDot = item.querySelector('.dirty-indicator');
-            if (this.state.isRequestDirty(reqName)) {
+            if (reqUuid && this.state.isRequestDirty(reqUuid)) {
                 if (!existingDot) {
                     const dot = document.createElement('span');
                     dot.className = 'dirty-indicator';
@@ -4432,7 +4441,7 @@ class PostmanHelperApp {
         this.state.markAsChanged();
 
         // Mark request clean and take a fresh snapshot after save
-        this.state.markRequestClean(name);
+        this.state.markRequestClean(this.state.currentRequest.uuid);
         this.state.takeCleanSnapshot(this.state.currentRequest);
         
         // Update UI to reflect changes
@@ -4562,7 +4571,7 @@ class PostmanHelperApp {
         this.state.markAsChanged();
 
         // Mark request clean and take fresh snapshot after saving tests
-        this.state.markRequestClean(this.state.currentRequest.name);
+        this.state.markRequestClean(this.state.currentRequest.uuid);
         this.state.takeCleanSnapshot(this.state.currentRequest);
         this.updateDirtyIndicators();
 

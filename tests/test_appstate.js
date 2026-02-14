@@ -47,7 +47,7 @@ before(() => {
             if (collection && !this.collections.includes(collection)) {
                 this.collections.push(collection);
             }
-            this.unsavedChanges = false;
+            // Note: do NOT reset unsavedChanges here (#83)
         }
         addCollection(collection) {
             this.collections.push(collection);
@@ -97,13 +97,14 @@ describe('AppState', () => {
         assert.ok(state.inheritanceManager);
     });
 
-    it('setCurrentCollection sets collection and clears unsaved', () => {
+    it('setCurrentCollection sets collection without resetting unsaved', () => {
         const state = new AppState();
         state.unsavedChanges = true;
         const col = new Collection('Test');
         state.setCurrentCollection(col);
         assert.equal(state.currentCollection, col);
-        assert.equal(state.unsavedChanges, false);
+        // setCurrentCollection no longer resets unsavedChanges (#83)
+        assert.equal(state.unsavedChanges, true);
     });
 
     it('setCurrentRequest sets request', () => {
