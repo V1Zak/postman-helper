@@ -3,6 +3,7 @@
 
 const http = require('http');
 const https = require('https');
+const vm = require('vm');
 const { Collection, PostmanRequest, Folder } = require('./models');
 
 class CollectionRunner {
@@ -136,6 +137,8 @@ class CollectionRunner {
      * Mirrors the logic from main.js:101-157.
      */
     httpRequest(options) {
+        const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
+
         return new Promise((resolve, reject) => {
             let parsedUrl;
             try {
@@ -157,7 +160,22 @@ class CollectionRunner {
 
             const req = httpModule.request(reqOptions, (res) => {
                 const chunks = [];
-                res.on('data', (chunk) => chunks.push(chunk));
+                let totalSize = 0;
+
+                res.on('data', (chunk) => {
+                    totalSize += chunk.length;
+                    if (totalSize > MAX_BODY_SIZE) {
+                        req.destroy();
+                        reject(new Error(`Response body exceeds ${MAX_BODY_SIZE} bytes limit`));
+                        return;
+                    }
+                    chunks.push(chunk);
+                });
+
+                res.on('error', (err) => {
+                    reject(err);
+                });
+
                 res.on('end', () => {
                     const bodyStr = Buffer.concat(chunks).toString('utf-8');
                     const responseHeaders = {};
@@ -208,11 +226,9 @@ class CollectionRunner {
         };
 
         try {
-            const fn = new Function(
-                'tests', 'responseCode', 'responseBody', 'responseTime',
-                testScript
-            );
-            fn(tests, responseCode, responseBody, responseTime);
+            const sandbox = { tests, responseCode, responseBody, responseTime };
+            const context = vm.createContext(sandbox);
+            vm.runInContext(testScript, context, { timeout: 5000 });
         } catch (err) {
             return {
                 total: 1,
@@ -242,7 +258,7 @@ class CollectionRunner {
     substituteVars(str, vars) {
         if (!str || typeof str !== 'string') return str || '';
         return str.replace(/\{\{(\w+)\}\}/g, (match, key) => {
-            return vars.hasOwnProperty(key) ? vars[key] : match;
+            return Object.hasOwn(vars, key) ? vars[key] : match;
         });
     }
 
