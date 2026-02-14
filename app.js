@@ -3174,7 +3174,7 @@ class PostmanHelperApp {
         requestTab.innerHTML = `
             <div class="form-group">
                 <label for="requestName">Request Name</label>
-                <input type="text" id="requestName" class="form-control" value="${this.state.currentRequest.name}">
+                <input type="text" id="requestName" class="form-control" value="${this.escapeHtml(this.state.currentRequest.name)}">
             </div>
 
             <div class="form-group">
@@ -3189,7 +3189,7 @@ class PostmanHelperApp {
                         <option value="HEAD" ${this.state.currentRequest.method === 'HEAD' ? 'selected' : ''}>HEAD</option>
                         <option value="OPTIONS" ${this.state.currentRequest.method === 'OPTIONS' ? 'selected' : ''}>OPTIONS</option>
                     </select>
-                    <input type="text" id="requestUrl" class="form-control" value="${this.state.currentRequest.url}" placeholder="https://api.example.com/endpoint">
+                    <input type="text" id="requestUrl" class="form-control" value="${this.escapeHtml(this.state.currentRequest.url)}" placeholder="https://api.example.com/endpoint">
                     <button id="sendRequestBtn" class="send-btn">Send</button>
                 </div>
                 <div id="urlPreview" class="url-preview" style="display:none;"></div>
@@ -3210,13 +3210,13 @@ class PostmanHelperApp {
                     <button class="body-toggle-btn ${this.state.bodyViewMode === 'formatted' ? 'active' : ''}" data-mode="formatted">Formatted</button>
                     <button class="body-toggle-btn beautify-btn" data-mode="beautify">Beautify</button>
                 </div>
-                <textarea id="requestBody" class="form-control">${this.getBodyForDisplay()}</textarea>
+                <textarea id="requestBody" class="form-control"></textarea>
                 <div id="bodyFormatError" class="body-format-error" style="display:none;"></div>
             </div>
 
             <div class="form-group">
                 <label for="requestDescription">Description</label>
-                <textarea id="requestDescription" class="form-control" placeholder="Optional description">${this.state.currentRequest.description || ''}</textarea>
+                <textarea id="requestDescription" class="form-control" placeholder="Optional description"></textarea>
             </div>
 
             <div class="btn-group">
@@ -3227,6 +3227,10 @@ class PostmanHelperApp {
                 <button id="copyAsCurlBtn" class="secondary" title="Copy request as cURL command">Copy as cURL</button>
             </div>
         `;
+
+        // Set textarea values programmatically to prevent XSS via </textarea> injection
+        document.getElementById('requestBody').value = this.getBodyForDisplay();
+        document.getElementById('requestDescription').value = this.state.currentRequest.description || '';
 
         // Set up event listeners for the request form
         document.getElementById('saveRequestBtn').addEventListener('click', () => this.saveRequest());
@@ -3404,11 +3408,13 @@ class PostmanHelperApp {
 
         let html = '';
         for (const [key, value] of entries) {
+            const eKey = this.escapeHtml(key);
+            const eValue = this.escapeHtml(value);
             html += `
                 <div class="header-row">
-                    <input type="text" class="header-key" value="${key}" placeholder="Header Name">
-                    <input type="text" class="header-value" value="${value}" placeholder="Header Value">
-                    <button class="remove-header-btn" data-key="${key}" aria-label="Remove header ${key}">\u274C</button>
+                    <input type="text" class="header-key" value="${eKey}" placeholder="Header Name">
+                    <input type="text" class="header-value" value="${eValue}" placeholder="Header Value">
+                    <button class="remove-header-btn" data-key="${eKey}" aria-label="Remove header ${eKey}">\u274C</button>
                 </div>
             `;
         }
@@ -3424,11 +3430,13 @@ class PostmanHelperApp {
         } else {
             let headersHtml = '';
             for (const header of headers) {
+                const eKey = this.escapeHtml(header.key);
+                const eValue = this.escapeHtml(header.value);
                 headersHtml += `
                     <div class="header-row">
-                        <input type="text" class="global-header-key" value="${header.key}" placeholder="Header Name">
-                        <input type="text" class="global-header-value" value="${header.value}" placeholder="Header Value">
-                        <button class="remove-global-header-btn" data-key="${header.key}" aria-label="Remove global header ${header.key}">\u274C</button>
+                        <input type="text" class="global-header-key" value="${eKey}" placeholder="Header Name">
+                        <input type="text" class="global-header-value" value="${eValue}" placeholder="Header Value">
+                        <button class="remove-global-header-btn" data-key="${eKey}" aria-label="Remove global header ${eKey}">\u274C</button>
                     </div>
                 `;
             }
@@ -3443,10 +3451,11 @@ class PostmanHelperApp {
         } else {
             let endpointsHtml = '';
             for (const endpoint of endpoints) {
+                const eEndpoint = this.escapeHtml(endpoint);
                 endpointsHtml += `
                     <div style="margin-bottom: 8px; display: flex; align-items: center;">
-                        <span style="flex: 1; word-break: break-all;">${endpoint}</span>
-                        <button class="remove-base-endpoint-btn" data-endpoint="${endpoint}" style="margin-left: 10px;" aria-label="Remove endpoint">\u274C</button>
+                        <span style="flex: 1; word-break: break-all;">${eEndpoint}</span>
+                        <button class="remove-base-endpoint-btn" data-endpoint="${eEndpoint}" style="margin-left: 10px;" aria-label="Remove endpoint">\u274C</button>
                     </div>
                 `;
             }
@@ -3462,18 +3471,20 @@ class PostmanHelperApp {
             let bodyHtml = '';
             for (const tmpl of bodyTemplates) {
                 const preview = tmpl.content.length > 80 ? tmpl.content.substring(0, 80) + '...' : tmpl.content;
+                const eName = this.escapeHtml(tmpl.name);
+                const ePreview = this.escapeHtml(preview);
                 bodyHtml += `
                     <div class="template-card">
                         <div class="template-card-header">
-                            <strong>${tmpl.name}</strong>
+                            <strong>${eName}</strong>
                             <div class="template-actions">
-                                <button class="template-action-btn apply-body-tmpl-btn" data-name="${tmpl.name}">Apply</button>
-                                <button class="template-action-btn apply-body-tmpl-all-btn" data-name="${tmpl.name}">Apply to All</button>
-                                <button class="template-action-btn create-req-from-tmpl-btn" data-name="${tmpl.name}">+ Request</button>
-                                <button class="template-action-btn remove-body-tmpl-btn" data-name="${tmpl.name}" aria-label="Remove body template">\u274C</button>
+                                <button class="template-action-btn apply-body-tmpl-btn" data-name="${eName}">Apply</button>
+                                <button class="template-action-btn apply-body-tmpl-all-btn" data-name="${eName}">Apply to All</button>
+                                <button class="template-action-btn create-req-from-tmpl-btn" data-name="${eName}">+ Request</button>
+                                <button class="template-action-btn remove-body-tmpl-btn" data-name="${eName}" aria-label="Remove body template">\u274C</button>
                             </div>
                         </div>
-                        <div class="template-preview">${preview}</div>
+                        <div class="template-preview">${ePreview}</div>
                     </div>
                 `;
             }
@@ -3489,17 +3500,19 @@ class PostmanHelperApp {
             let testHtml = '';
             for (const tmpl of testTemplates) {
                 const preview = tmpl.content.length > 80 ? tmpl.content.substring(0, 80) + '...' : tmpl.content;
+                const eName = this.escapeHtml(tmpl.name);
+                const ePreview = this.escapeHtml(preview);
                 testHtml += `
                     <div class="template-card">
                         <div class="template-card-header">
-                            <strong>${tmpl.name}</strong>
+                            <strong>${eName}</strong>
                             <div class="template-actions">
-                                <button class="template-action-btn apply-test-tmpl-btn" data-name="${tmpl.name}">Apply</button>
-                                <button class="template-action-btn apply-test-tmpl-all-btn" data-name="${tmpl.name}">Apply to All</button>
-                                <button class="template-action-btn remove-test-tmpl-btn" data-name="${tmpl.name}" aria-label="Remove test template">\u274C</button>
+                                <button class="template-action-btn apply-test-tmpl-btn" data-name="${eName}">Apply</button>
+                                <button class="template-action-btn apply-test-tmpl-all-btn" data-name="${eName}">Apply to All</button>
+                                <button class="template-action-btn remove-test-tmpl-btn" data-name="${eName}" aria-label="Remove test template">\u274C</button>
                             </div>
                         </div>
-                        <div class="template-preview">${preview}</div>
+                        <div class="template-preview">${ePreview}</div>
                     </div>
                 `;
             }
@@ -3602,7 +3615,7 @@ class PostmanHelperApp {
                     <button class="snippet-btn" data-snippet="collvar">Collection Var</button>
                 </div>
                 <div style="position:relative;">
-                    <textarea id="requestTests" class="form-control" style="min-height:200px;" placeholder="// Write your Postman test scripts here&#10;// Type pm. for autocomplete suggestions">${this.state.currentRequest.tests || ''}</textarea>
+                    <textarea id="requestTests" class="form-control" style="min-height:200px;" placeholder="// Write your Postman test scripts here&#10;// Type pm. for autocomplete suggestions"></textarea>
                 </div>
             </div>
 
@@ -3611,6 +3624,9 @@ class PostmanHelperApp {
                 <button id="clearTestsBtn" class="secondary">Clear</button>
             </div>
         `;
+
+        // Set textarea value programmatically to prevent XSS via </textarea> injection
+        document.getElementById('requestTests').value = this.state.currentRequest.tests || '';
 
         document.getElementById('saveTestsBtn').addEventListener('click', () => this.saveTests());
         document.getElementById('clearTestsBtn').addEventListener('click', () => {
@@ -3928,7 +3944,7 @@ class PostmanHelperApp {
                             ? this.highlightMatch(request.name, f.text, f.useRegex)
                             : this.escapeHtml(request.name);
                         const dirtyDot = this.state.isRequestDirty(request.uuid) ? '<span class="dirty-indicator" aria-label="unsaved changes">\u25CF</span>' : '';
-                        html += `<div class="tree-item ${reqActive}" data-type="request" data-id="${request.name}" data-uuid="${request.uuid || ''}" data-collection-index="${index}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
+                        html += `<div class="tree-item ${reqActive}" data-type="request" data-id="${this.escapeHtml(request.name)}" data-uuid="${this.escapeHtml(request.uuid || '')}" data-collection-index="${index}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
                     }
                 }
             }
@@ -3981,12 +3997,13 @@ class PostmanHelperApp {
         const activeClass = isFolderActive ? 'active' : '';
         const folderExpanded = this._expandedFolders.has(folderId);
 
+        const eFolderName = this.escapeHtml(folder.name);
         let html = `
-            <div class="tree-item folder ${activeClass}" data-type="folder" data-id="${folder.name}" data-drop-target="folder" draggable="true" style="padding-left: ${12 + depth * 15}px" role="treeitem" aria-expanded="${folderExpanded}" aria-selected="${isFolderActive}" tabindex="-1">
+            <div class="tree-item folder ${activeClass}" data-type="folder" data-id="${eFolderName}" data-drop-target="folder" draggable="true" style="padding-left: ${12 + depth * 15}px" role="treeitem" aria-expanded="${folderExpanded}" aria-selected="${isFolderActive}" tabindex="-1">
                 <span class="tree-toggle" data-target="${folderId}" aria-hidden="true">\u25B6</span>
-                <span class="tree-label"><span aria-hidden="true">\uD83D\uDCC1</span> ${folder.name}</span>
+                <span class="tree-label"><span aria-hidden="true">\uD83D\uDCC1</span> ${eFolderName}</span>
             </div>
-            <div id="${folderId}" class="tree-children" role="group" data-drop-target="folder" data-id="${folder.name}" style="padding-left: ${24 + depth * 15}px">
+            <div id="${folderId}" class="tree-children" role="group" data-drop-target="folder" data-id="${eFolderName}" style="padding-left: ${24 + depth * 15}px">
         `;
 
         // Add folder contents (filtered)
@@ -4003,7 +4020,7 @@ class PostmanHelperApp {
                     ? this.highlightMatch(request.name, f.text, f.useRegex)
                     : this.escapeHtml(request.name);
                 const dirtyDot = this.state.isRequestDirty(request.uuid) ? '<span class="dirty-indicator" aria-label="unsaved changes">\u25CF</span>' : '';
-                html += `<div class="tree-item ${requestActive}" data-type="request" data-id="${request.name}" data-uuid="${request.uuid || ''}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
+                html += `<div class="tree-item ${requestActive}" data-type="request" data-id="${this.escapeHtml(request.name)}" data-uuid="${this.escapeHtml(request.uuid || '')}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
             }
         }
 
@@ -4335,7 +4352,7 @@ class PostmanHelperApp {
 
     escapeHtml(str) {
         if (!str) return '';
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     highlightMatch(text, searchTerm, useRegex) {
@@ -6188,12 +6205,14 @@ class PostmanHelperApp {
                     <button class="settings-close-btn" id="closeEnvMgrBtn" aria-label="Close environment manager">&times;</button>
                 </div>
                 <div class="env-list">
-                    ${this.state.environments.map(env => `
-                        <div class="env-list-item ${env.name === editingEnvName ? 'active' : ''}" data-env="${env.name}">
-                            <span>${env.name}</span>
-                            <button class="env-var-remove" data-delete-env="${env.name}" aria-label="Delete environment ${env.name}">&times;</button>
+                    ${this.state.environments.map(env => {
+                        const eName = this.escapeHtml(env.name);
+                        return `
+                        <div class="env-list-item ${env.name === editingEnvName ? 'active' : ''}" data-env="${eName}">
+                            <span>${eName}</span>
+                            <button class="env-var-remove" data-delete-env="${eName}" aria-label="Delete environment ${eName}">&times;</button>
                         </div>
-                    `).join('')}
+                    `; }).join('')}
                     <button id="addEnvBtn" style="margin-top:8px; font-size:12px; padding:6px 12px;">+ Add Environment</button>
                     <button id="importEnvBtn" style="margin-top:4px; font-size:12px; padding:6px 12px;">Import from Postman</button>
                     <button id="exportCurrentEnvBtn" style="margin-top:4px; font-size:12px; padding:6px 12px;">Export Current</button>
@@ -6344,12 +6363,12 @@ class PostmanHelperApp {
         if (!env) return '';
         const vars = Object.entries(env.variables);
         return `
-            <h4 style="margin-bottom:12px; color:var(--text-primary);">${envName} Variables</h4>
+            <h4 style="margin-bottom:12px; color:var(--text-primary);">${this.escapeHtml(envName)} Variables</h4>
             <div id="envVarsContainer">
                 ${vars.map(([key, val]) => `
                     <div class="env-var-row">
-                        <input type="text" class="env-key" value="${key}" placeholder="Variable name">
-                        <input type="text" class="env-val" value="${val}" placeholder="Value">
+                        <input type="text" class="env-key" value="${this.escapeHtml(key)}" placeholder="Variable name">
+                        <input type="text" class="env-val" value="${this.escapeHtml(String(val))}" placeholder="Value">
                         <button class="env-var-remove">&times;</button>
                     </div>
                 `).join('')}
@@ -6713,8 +6732,8 @@ class PostmanHelperApp {
 
         panel.innerHTML = `
             <div class="response-header">
-                <span class="response-status ${statusClass}">${response.status} ${statusDesc}</span>
-                <span class="response-time">${response.time}ms</span>
+                <span class="response-status ${statusClass}">${parseInt(response.status) || 0} ${this.escapeHtml(String(statusDesc))}</span>
+                <span class="response-time">${parseInt(response.time) || 0}ms</span>
                 <span class="response-size">${sizeStr}</span>
                 <span style="flex:1"></span>
                 <button class="response-action-btn" id="copyResponseBtn" title="Copy body">Copy</button>
@@ -6847,11 +6866,7 @@ class PostmanHelperApp {
         return `<pre class="json-highlighted">${highlighted}</pre>`;
     }
 
-    escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
+    // escapeHtml consolidated — see definition at line ~4336
 
     formatBytes(bytes) {
         if (bytes < 1024) return bytes + ' B';
@@ -7148,9 +7163,9 @@ class PostmanHelperApp {
                 const pct = (count / max) * 100;
                 const color = (colors && colors[label]) || 'var(--accent)';
                 html += `<div class="bar-row">
-                    <span class="bar-label">${label}</span>
+                    <span class="bar-label">${this.escapeHtml(String(label))}</span>
                     <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
-                    <span class="bar-value">${count}</span>
+                    <span class="bar-value">${parseInt(count) || 0}</span>
                 </div>`;
             }
             html += '</div>';
@@ -7167,7 +7182,7 @@ class PostmanHelperApp {
         } else {
             html += '<table class="endpoints-table">';
             for (const [endpoint, count] of topEndpoints) {
-                html += `<tr><td>${endpoint}</td><td>${count}</td></tr>`;
+                html += `<tr><td>${this.escapeHtml(String(endpoint))}</td><td>${parseInt(count) || 0}</td></tr>`;
             }
             html += '</table>';
         }
@@ -7187,7 +7202,7 @@ class PostmanHelperApp {
             html += '<div class="activity-chart">';
             for (const day of activity) {
                 const height = Math.max((day.requests / max) * 100, 2);
-                html += `<div class="activity-bar" style="height:${height}%" title="${day.date}: ${day.requests} requests"></div>`;
+                html += `<div class="activity-bar" style="height:${height}%" title="${this.escapeHtml(String(day.date))}: ${parseInt(day.requests) || 0} requests"></div>`;
             }
             html += '</div>';
         }
