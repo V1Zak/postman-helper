@@ -15,6 +15,7 @@ Request = class {
         this.body = body || '';
         this.description = description || '';
         this.events = events || { prerequest: '', test: '' };
+        this.tests = (events && events.test) ? events.test : '';
         this._history = [];
         this._maxHistoryDepth = 20;
     }
@@ -213,7 +214,8 @@ Collection = class {
                 headers: req.headers,
                 body: req.body,
                 description: req.description,
-                events: req.events
+                events: req.events,
+                tests: req.tests || ''
             })),
             folders: this.folders.map(folder => ({
                 name: folder.name,
@@ -224,7 +226,8 @@ Collection = class {
                     headers: req.headers,
                     body: req.body,
                     description: req.description,
-                    events: req.events
+                    events: req.events,
+                    tests: req.tests || ''
                 }))
             }))
         };
@@ -264,14 +267,15 @@ Collection = class {
             if (req.description) {
                 item.request.description = req.description;
             }
-            // Add test scripts as events
+            // Add test scripts as events — check both req.tests and events.test (#78)
             const events = [];
-            if (req.tests) {
+            const testScript = req.tests || (req.events && req.events.test) || '';
+            if (testScript) {
                 events.push({
                     listen: 'test',
                     script: {
                         type: 'text/javascript',
-                        exec: req.tests.split('\n')
+                        exec: testScript.split('\n')
                     }
                 });
             }
