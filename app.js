@@ -4382,6 +4382,7 @@ class PostmanHelperApp {
         }
 
         // 1. Capture raw user inputs
+        const oldName = this.state.currentRequest.name;
         const name = document.getElementById('requestName').value;
         const method = document.getElementById('requestMethod').value;
         const url = document.getElementById('requestUrl').value;
@@ -4430,9 +4431,8 @@ class PostmanHelperApp {
         // Update UI to reflect changes
         this.updateCollectionTree();
         
-        // If the request name changed, we need to update the tree selection
-        if (this.state.currentRequest.name !== name) {
-            // Force re-selection of the request to update UI
+        // If the request name changed, refresh tree to show new name (#82)
+        if (oldName !== name) {
             const currentRequest = this.state.currentRequest;
             this.state.setCurrentRequest(null);
             this.state.setCurrentRequest(currentRequest);
