@@ -60,7 +60,8 @@ function isPrivateIP(ip) {
 
 /**
  * Resolve hostname to IP and check if it's private.
- * Returns a promise that resolves to { allowed: boolean, error?: string }.
+ * Returns a promise that resolves to { allowed: boolean, ip?: string, family?: number, error?: string }.
+ * The resolved IP is returned so callers can pin it in the request to prevent DNS rebinding (#116).
  */
 function validateURLForSSRF(parsedUrl) {
   return new Promise((resolve) => {
@@ -76,21 +77,23 @@ function validateURLForSSRF(parsedUrl) {
       if (isPrivateIP(hostname)) {
         return resolve({ allowed: false, error: 'Requests to private/loopback addresses are blocked' })
       }
-      return resolve({ allowed: true })
+      return resolve({ allowed: true, ip: hostname, family: net.isIP(hostname) === 6 ? 6 : 4 })
     }
 
-    // Resolve hostname to check actual IPs
+    // Resolve hostname to check actual IPs — pin the first safe IP (#116)
     dns.lookup(hostname, { all: true }, (err, addresses) => {
       if (err) {
-        // Let the actual request handle DNS errors
-        return resolve({ allowed: true })
+        // DNS failed — block the request instead of allowing a TOCTOU bypass
+        return resolve({ allowed: false, error: 'DNS resolution failed for ' + hostname + ': ' + err.code })
       }
       for (const addr of addresses) {
         if (isPrivateIP(addr.address)) {
           return resolve({ allowed: false, error: 'Requests to private/loopback addresses are blocked (resolved ' + hostname + ' to ' + addr.address + ')' })
         }
       }
-      resolve({ allowed: true })
+      // Pin the first resolved IP to prevent DNS rebinding
+      const pinned = addresses[0]
+      resolve({ allowed: true, ip: pinned.address, family: pinned.family })
     })
   })
 }
@@ -314,6 +317,15 @@ ipcMain.handle('send-request', async (event, options) => {
         path: parsedUrl.pathname + parsedUrl.search,
         headers: headers || {},
         timeout: 30000
+      }
+
+      // Pin the validated IP to prevent DNS rebinding attacks (#116)
+      if (ssrfCheck.ip) {
+        const pinnedIP = ssrfCheck.ip
+        const pinnedFamily = ssrfCheck.family || 4
+        reqOptions.lookup = (hostname, opts, cb) => {
+          cb(null, pinnedIP, pinnedFamily)
+        }
       }
 
       const req = httpModule.request(reqOptions, (res) => {
