@@ -2804,6 +2804,17 @@ class PostmanHelperApp {
         const analyticsBtn = document.getElementById('analyticsBtn');
         if (analyticsBtn) analyticsBtn.addEventListener('click', () => this.showAnalytics());
 
+        // Plugin panel buttons
+        const closePluginsBtn = document.getElementById('closePluginsBtn');
+        if (closePluginsBtn) closePluginsBtn.addEventListener('click', () => {
+            const panel = document.getElementById('pluginPanel');
+            if (panel) panel.style.display = 'none';
+        });
+        const refreshPluginsBtn = document.getElementById('refreshPluginsBtn');
+        if (refreshPluginsBtn) refreshPluginsBtn.addEventListener('click', () => {
+            this.showToast('Plugins refreshed');
+        });
+
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboardShortcuts(e));
 
