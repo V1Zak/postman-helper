@@ -4454,9 +4454,24 @@ class PostmanHelperApp {
         const deleteName = this.state.currentRequest.name;
 
         const doDelete = () => {
-            this.state.currentCollection.requests = this.state.currentCollection.requests.filter(
-                r => r !== this.state.currentRequest
-            );
+            const col = this.state.currentCollection;
+            const req = this.state.currentRequest;
+            // Remove from root requests
+            const rootIdx = col.requests.indexOf(req);
+            if (rootIdx !== -1) {
+                col.requests.splice(rootIdx, 1);
+            } else {
+                // Search folders recursively (#75)
+                const removeFromFolders = (folders) => {
+                    for (const f of folders) {
+                        const idx = f.requests.indexOf(req);
+                        if (idx !== -1) { f.requests.splice(idx, 1); return true; }
+                        if (f.folders && removeFromFolders(f.folders)) return true;
+                    }
+                    return false;
+                };
+                removeFromFolders(col.folders || []);
+            }
             this.state.setCurrentRequest(null);
             this.updateCollectionTree();
             this.switchTab('request');
