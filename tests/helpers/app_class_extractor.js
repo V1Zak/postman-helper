@@ -145,4 +145,41 @@ function extractDialogSystem() {
     return m.exports.DialogSystem;
 }
 
-module.exports = { extractAppClasses, extractAppState, extractDialogSystem };
+/**
+ * Extracts the autosave sanitisation utilities from app.js.
+ * They sit between "// Autosave sanitisation utilities" and "// AppState class".
+ * No DOM dependencies — pure functions.
+ */
+function extractAutoSaveSanitizers() {
+    const appPath = path.join(__dirname, '..', '..', 'app.js');
+    const src = fs.readFileSync(appPath, 'utf-8');
+    const lines = src.split('\n');
+
+    let blockStart = -1;
+    let blockEnd = -1;
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].match(/^\/\/ Autosave sanitisation utilities/) && blockStart === -1) {
+            blockStart = i + 1; // skip the comment line
+        }
+        if (blockStart > -1 && lines[i].match(/^\/\/ AppState class/)) {
+            blockEnd = i;
+            break;
+        }
+    }
+
+    if (blockStart === -1 || blockEnd === -1) {
+        throw new Error(`Could not find autosave sanitizers in app.js (start=${blockStart}, end=${blockEnd})`);
+    }
+
+    const blockCode = lines.slice(blockStart, blockEnd).join('\n');
+    // Strip the module.exports guard that references module (already in Node context)
+    const code = blockCode.replace(/if\s*\(typeof module.*\n.*\n\}/, '') +
+        '\nmodule.exports = { stripDangerousKeys, sanitizeAutoSaveData };';
+
+    const Module = require('module');
+    const m = new Module('autosave_sanitizers_virtual.js');
+    m._compile(code, 'autosave_sanitizers_virtual.js');
+    return m.exports;
+}
+
+module.exports = { extractAppClasses, extractAppState, extractDialogSystem, extractAutoSaveSanitizers };

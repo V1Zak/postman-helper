@@ -11,7 +11,7 @@ const assert = require('node:assert/strict');
 // We need a DOM to test AppState (it references document.getElementById)
 const { JSDOM } = require('jsdom');
 
-let AppState, Collection, Request;
+let AppState, Collection, Request, stripDangerousKeys, sanitizeAutoSaveData;
 
 before(() => {
     // Set up minimal DOM and localStorage before extracting AppState
@@ -23,13 +23,18 @@ before(() => {
     global.localStorage = dom.window.localStorage;
 
     // Extract real classes from app.js
-    const { extractAppClasses, extractAppState } = require('./helpers/app_class_extractor');
+    const { extractAppClasses, extractAppState, extractAutoSaveSanitizers } = require('./helpers/app_class_extractor');
     const classes = extractAppClasses();
     Request = classes.Request;
     Collection = classes.Collection;
 
     // Extract the REAL AppState class from app.js (not a re-created copy)
     AppState = extractAppState();
+
+    // Extract autosave sanitisation utilities (#118, #115)
+    const sanitizers = extractAutoSaveSanitizers();
+    stripDangerousKeys = sanitizers.stripDangerousKeys;
+    sanitizeAutoSaveData = sanitizers.sanitizeAutoSaveData;
 });
 
 describe('AppState', () => {
@@ -156,5 +161,162 @@ describe('AppState', () => {
         assert.equal(typeof mgr.addTestTemplate, 'function');
         assert.equal(typeof mgr.removeTestTemplate, 'function');
         assert.equal(typeof mgr.addRule, 'function');
+    });
+});
+
+// Autosave sanitisation tests (#118, #115)
+describe('stripDangerousKeys', () => {
+    it('removes __proto__ keys', () => {
+        const input = JSON.parse('{"a": 1, "__proto__": {"polluted": true}}');
+        const result = stripDangerousKeys(input);
+        assert.equal(result.a, 1);
+        assert.equal(result.__proto__.polluted, undefined); // should be Object.prototype
+        assert.ok(!result.hasOwnProperty('__proto__'));
+    });
+
+    it('removes constructor keys', () => {
+        const result = stripDangerousKeys({ constructor: { bad: true }, ok: 42 });
+        assert.equal(result.ok, 42);
+        assert.ok(!result.hasOwnProperty('constructor') || typeof result.constructor === 'function');
+    });
+
+    it('removes prototype keys', () => {
+        const result = stripDangerousKeys({ prototype: { x: 1 }, y: 2 });
+        assert.equal(result.y, 2);
+        assert.ok(!result.hasOwnProperty('prototype'));
+    });
+
+    it('recurses into nested objects', () => {
+        const result = stripDangerousKeys({ a: { __proto__: { x: 1 }, b: 2 } });
+        assert.equal(result.a.b, 2);
+    });
+
+    it('handles arrays', () => {
+        const result = stripDangerousKeys([{ __proto__: { x: 1 }, a: 1 }, { b: 2 }]);
+        assert.ok(Array.isArray(result));
+        assert.equal(result[0].a, 1);
+        assert.equal(result[1].b, 2);
+    });
+
+    it('returns primitives unchanged', () => {
+        assert.equal(stripDangerousKeys('hello'), 'hello');
+        assert.equal(stripDangerousKeys(42), 42);
+        assert.equal(stripDangerousKeys(null), null);
+        assert.equal(stripDangerousKeys(true), true);
+    });
+
+    it('respects max depth of 10', () => {
+        // Build a deeply nested object (15 levels)
+        let obj = { val: 'deep' };
+        for (let i = 0; i < 15; i++) {
+            obj = { child: obj, __proto__: { bad: true } };
+        }
+        const result = stripDangerousKeys(obj);
+        // Should not throw; deep levels are returned as-is (not recursed)
+        assert.ok(result);
+    });
+});
+
+describe('sanitizeAutoSaveData', () => {
+    it('returns null for non-object input', () => {
+        assert.equal(sanitizeAutoSaveData(null), null);
+        assert.equal(sanitizeAutoSaveData('string'), null);
+        assert.equal(sanitizeAutoSaveData(42), null);
+        assert.equal(sanitizeAutoSaveData([1, 2]), null);
+    });
+
+    it('returns sanitised copy for valid data', () => {
+        const result = sanitizeAutoSaveData({ version: 2, collections: [] });
+        assert.ok(result);
+        assert.equal(result.version, 2);
+        assert.deepEqual(result.collections, []);
+    });
+
+    it('strips aiApiKey from settings', () => {
+        const result = sanitizeAutoSaveData({
+            settings: { aiApiKey: 'sk-secret-key', darkMode: true }
+        });
+        assert.equal(result.settings.aiApiKey, undefined);
+        assert.equal(result.settings.darkMode, true);
+    });
+
+    it('fixes invalid version to 1', () => {
+        assert.equal(sanitizeAutoSaveData({ version: 'bad' }).version, 1);
+        assert.equal(sanitizeAutoSaveData({ version: -5 }).version, 1);
+    });
+
+    it('filters non-object entries from collections array', () => {
+        const result = sanitizeAutoSaveData({
+            collections: [{ name: 'Valid' }, null, 'string', 42, [1, 2]]
+        });
+        assert.equal(result.collections.length, 1);
+        assert.equal(result.collections[0].name, 'Valid');
+    });
+
+    it('resets collections to empty array if not an array', () => {
+        const result = sanitizeAutoSaveData({ collections: 'not-array' });
+        assert.deepEqual(result.collections, []);
+    });
+
+    it('removes collection (v1) if not a plain object', () => {
+        const result = sanitizeAutoSaveData({ collection: [1, 2] });
+        assert.equal(result.collection, undefined);
+    });
+
+    it('clamps activeCollectionIndex', () => {
+        assert.equal(sanitizeAutoSaveData({ activeCollectionIndex: -3 }).activeCollectionIndex, 0);
+        assert.equal(sanitizeAutoSaveData({ activeCollectionIndex: 'bad' }).activeCollectionIndex, 0);
+        assert.equal(sanitizeAutoSaveData({ activeCollectionIndex: 5 }).activeCollectionIndex, 5);
+    });
+
+    it('removes settings if not a plain object', () => {
+        assert.equal(sanitizeAutoSaveData({ settings: 'bad' }).settings, undefined);
+        assert.equal(sanitizeAutoSaveData({ settings: [1] }).settings, undefined);
+    });
+
+    it('clamps sidebarWidth to reasonable bounds', () => {
+        const r1 = sanitizeAutoSaveData({ settings: { sidebarWidth: 50 } });
+        assert.equal(r1.settings.sidebarWidth, undefined);
+        const r2 = sanitizeAutoSaveData({ settings: { sidebarWidth: 5000 } });
+        assert.equal(r2.settings.sidebarWidth, undefined);
+        const r3 = sanitizeAutoSaveData({ settings: { sidebarWidth: 300 } });
+        assert.equal(r3.settings.sidebarWidth, 300);
+    });
+
+    it('resets environments to array if invalid', () => {
+        const result = sanitizeAutoSaveData({ environments: 'bad' });
+        assert.deepEqual(result.environments, []);
+    });
+
+    it('filters non-string expandedFolders', () => {
+        const result = sanitizeAutoSaveData({ expandedFolders: ['a', 42, null, 'b'] });
+        assert.deepEqual(result.expandedFolders, ['a', 'b']);
+    });
+
+    it('removes non-string currentRequestName', () => {
+        assert.equal(sanitizeAutoSaveData({ currentRequestName: 42 }).currentRequestName, undefined);
+        assert.equal(sanitizeAutoSaveData({ currentRequestName: 'valid' }).currentRequestName, 'valid');
+    });
+
+    it('removes non-string currentFolderName', () => {
+        assert.equal(sanitizeAutoSaveData({ currentFolderName: {} }).currentFolderName, undefined);
+        assert.equal(sanitizeAutoSaveData({ currentFolderName: 'folder1' }).currentFolderName, 'folder1');
+    });
+
+    it('removes analytics if not a plain object', () => {
+        assert.equal(sanitizeAutoSaveData({ analytics: [1, 2] }).analytics, undefined);
+        assert.ok(sanitizeAutoSaveData({ analytics: { total: 5 } }).analytics);
+    });
+
+    it('removes inheritance if not a plain object', () => {
+        assert.equal(sanitizeAutoSaveData({ inheritance: 'bad' }).inheritance, undefined);
+        assert.ok(sanitizeAutoSaveData({ inheritance: { rules: [] } }).inheritance);
+    });
+
+    it('strips __proto__ from nested autosave data', () => {
+        const malicious = JSON.parse('{"settings": {"__proto__": {"isAdmin": true}, "darkMode": false}}');
+        const result = sanitizeAutoSaveData(malicious);
+        assert.equal(result.settings.darkMode, false);
+        assert.equal(result.settings.isAdmin, undefined);
     });
 });
