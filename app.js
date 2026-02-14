@@ -88,6 +88,9 @@ Collection = class {
                 this.name = dataObj.info.name || this.name;
                 this.description = dataObj.info.description || this.description;
                 if (dataObj.item) {
+                    // Clear existing data before importing (#84)
+                    this.requests = [];
+                    this.folders = [];
                     this.processPostmanItems(dataObj.item);
                 }
                 return this;
