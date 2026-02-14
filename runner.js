@@ -166,31 +166,37 @@ class CollectionRunner {
                 timeout: this.timeout
             };
 
+            // Settled guard to prevent double resolve/reject (#124)
+            let settled = false;
+            const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
+
             const req = httpModule.request(reqOptions, (res) => {
                 const chunks = [];
                 let totalSize = 0;
 
                 res.on('data', (chunk) => {
+                    if (settled) return;
                     totalSize += chunk.length;
                     if (totalSize > MAX_BODY_SIZE) {
                         req.destroy();
-                        reject(new Error(`Response body exceeds ${MAX_BODY_SIZE} bytes limit`));
+                        settle(reject, new Error(`Response body exceeds ${MAX_BODY_SIZE} bytes limit`));
                         return;
                     }
                     chunks.push(chunk);
                 });
 
                 res.on('error', (err) => {
-                    reject(err);
+                    settle(reject, err);
                 });
 
                 res.on('end', () => {
+                    if (settled) return;
                     const bodyStr = Buffer.concat(chunks).toString('utf-8');
                     const responseHeaders = {};
                     for (const [key, value] of Object.entries(res.headers)) {
                         responseHeaders[key] = Array.isArray(value) ? value.join(', ') : value;
                     }
-                    resolve({
+                    settle(resolve, {
                         status: res.statusCode,
                         statusText: res.statusMessage,
                         headers: responseHeaders,
@@ -201,11 +207,11 @@ class CollectionRunner {
 
             req.on('timeout', () => {
                 req.destroy();
-                reject(new Error(`Request timed out after ${this.timeout}ms`));
+                settle(reject, new Error(`Request timed out after ${this.timeout}ms`));
             });
 
             req.on('error', (error) => {
-                reject(error);
+                settle(reject, error);
             });
 
             if (options.body && options.method !== 'GET' && options.method !== 'HEAD') {
