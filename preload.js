@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   aiTestConnection: (config) => ipcRenderer.invoke('ai-test-connection', config),
 
   // Add more API methods as needed
-  onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
-  onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', callback)
+  // Strip raw IPC event object — only pass data args to renderer callbacks
+  onUpdateAvailable: (callback) => ipcRenderer.on('update-available', (_event, ...args) => callback(...args)),
+  onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', (_event, ...args) => callback(...args))
 })
