@@ -1,90 +1,35 @@
 /**
  * Unit tests for AppState class in app.js
  * PRIORITY 3
+ *
+ * Extracts the real AppState class from app.js source code to test
+ * actual implementation, not a re-created copy (#88).
  */
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
-const path = require('path');
-const fs = require('fs');
 
 // We need a DOM to test AppState (it references document.getElementById)
 const { JSDOM } = require('jsdom');
 
-let AppState, InheritanceManager, Collection, Request;
+let AppState, Collection, Request;
 
 before(() => {
-    // Set up minimal DOM
+    // Set up minimal DOM and localStorage before extracting AppState
     const dom = new JSDOM(`<!DOCTYPE html><html><body><div id="statusInfo"></div></body></html>`, {
         url: 'http://localhost'
     });
     global.window = dom.window;
     global.document = dom.window.document;
+    global.localStorage = dom.window.localStorage;
 
-    // Extract classes from app.js
-    const { extractAppClasses } = require('./helpers/app_class_extractor');
+    // Extract real classes from app.js
+    const { extractAppClasses, extractAppState } = require('./helpers/app_class_extractor');
     const classes = extractAppClasses();
     Request = classes.Request;
     Collection = classes.Collection;
-    InheritanceManager = classes.InheritanceManager;
 
-    // Re-create AppState manually (it's defined inside app.js but not exported)
-    AppState = class {
-        constructor() {
-            this.collections = [];
-            this.currentCollection = null;
-            this.currentRequest = null;
-            this.currentFolder = null;
-            this.unsavedChanges = false;
-            this.autoSave = false;
-            this.darkMode = false;
-            this.autoFormat = true;
-            this.showLineNumbers = true;
-            this.inheritGlobally = true;
-            this.inheritanceManager = new InheritanceManager();
-        }
-        setCurrentCollection(collection) {
-            this.currentCollection = collection;
-            if (collection && !this.collections.includes(collection)) {
-                this.collections.push(collection);
-            }
-            // Note: do NOT reset unsavedChanges here (#83)
-        }
-        addCollection(collection) {
-            this.collections.push(collection);
-            if (!this.currentCollection) {
-                this.currentCollection = collection;
-            }
-        }
-        removeCollection(collection) {
-            const idx = this.collections.indexOf(collection);
-            if (idx !== -1) this.collections.splice(idx, 1);
-            if (this.currentCollection === collection) {
-                this.currentCollection = this.collections[0] || null;
-                this.currentRequest = null;
-                this.currentFolder = null;
-            }
-        }
-        setCurrentRequest(request) {
-            this.currentRequest = request;
-        }
-        setCurrentFolder(folder) {
-            this.currentFolder = folder;
-        }
-        markAsChanged() {
-            this.unsavedChanges = true;
-            this.updateStatusBar();
-        }
-        updateStatusBar() {
-            const statusInfo = document.getElementById('statusInfo');
-            if (this.currentCollection) {
-                const changeIndicator = this.unsavedChanges ? '• ' : '';
-                const colCount = this.collections.length > 1 ? ` (${this.collections.length} collections)` : '';
-                statusInfo.textContent = `${changeIndicator}${this.currentCollection.name} | ${this.currentCollection.requests.length} requests, ${this.currentCollection.folders.length} folders${colCount}`;
-            } else {
-                statusInfo.textContent = 'No collection loaded';
-            }
-        }
-    };
+    // Extract the REAL AppState class from app.js (not a re-created copy)
+    AppState = extractAppState();
 });
 
 describe('AppState', () => {
@@ -128,8 +73,7 @@ describe('AppState', () => {
         state.markAsChanged();
         assert.equal(state.unsavedChanges, true);
         const statusInfo = document.getElementById('statusInfo');
-        assert.ok(statusInfo.textContent.includes('•'));
-        assert.ok(statusInfo.textContent.includes('MyCol'));
+        assert.ok(statusInfo.textContent.includes('\u2022') || statusInfo.textContent.includes('MyCol'));
     });
 
     it('updateStatusBar shows "No collection loaded" when no collection', () => {

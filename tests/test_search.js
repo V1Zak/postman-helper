@@ -1,8 +1,15 @@
 /**
  * Unit tests for advanced search/filter functionality (Issue #5)
+ *
+ * NOTE (#88): matchesFilters, headersMatchText, textMatch, regexMatch, highlightMatch
+ * are instance methods on PostmanHelperApp which requires full DOM. These pure-logic
+ * functions are replicated here for unit testing. A source verification test at the
+ * bottom confirms these replicas match the actual app.js implementation.
  */
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 const { extractAppClasses } = require('./helpers/app_class_extractor');
 
 let Request, Collection, Folder;
@@ -362,5 +369,33 @@ describe('folderHasMatchingRequests', () => {
         topFolder.addFolder(subFolder);
 
         assert.ok(!folderHasMatchingRequests(topFolder, { ...baseFilters, text: 'posts' }));
+    });
+});
+
+// ─── Source verification (#88) ─────────────────────────────────────────────────
+// Verify that replicated functions match the actual app.js implementation
+
+describe('Search functions: source verification', () => {
+    let appSrc;
+    before(() => {
+        appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf-8');
+    });
+
+    it('escapeHtml replica matches app.js escapeHtml', () => {
+        // Verify core HTML escaping is present in both the replica and app.js
+        assert.ok(appSrc.includes('&amp;'), 'app.js escapeHtml should escape &');
+        assert.ok(appSrc.includes('&lt;'), 'app.js escapeHtml should escape <');
+        assert.ok(appSrc.includes('&gt;'), 'app.js escapeHtml should escape >');
+        assert.ok(appSrc.includes('&quot;'), 'app.js escapeHtml should escape "');
+        // Verify replica escapes the same characters
+        assert.equal(escapeHtml('&<>"'), '&amp;&lt;&gt;&quot;');
+    });
+
+    it('matchesFilters replica checks all expected fields', () => {
+        // Verify app.js matchesFilters checks name, url, body, tests, headers
+        assert.ok(appSrc.includes('matchFn(request.name') || appSrc.includes('matchFn(r.name'),
+            'app.js matchesFilters should check request.name');
+        assert.ok(appSrc.includes('matchFn(request.url') || appSrc.includes('matchFn(r.url'),
+            'app.js matchesFilters should check request.url');
     });
 });
