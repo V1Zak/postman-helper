@@ -387,3 +387,51 @@ ipcMain.handle('ai-suggest-url', async (event, data) => {
     return { suggestions: [], error: error.message }
   }
 })
+
+// ===== AI Configuration from Renderer =====
+ipcMain.handle('ai-update-config', async (event, newConfig) => {
+  if (!validateAIInput(newConfig)) return { success: false, error: 'Invalid config' }
+  try {
+    if (aiService && typeof aiService.reconfigure === 'function') {
+      aiService.reconfigure(newConfig)
+      return { success: true, enabled: aiService.enabled }
+    }
+    // If AI module failed to load initially, try again with new config
+    try {
+      const { AIService } = require('./ai')
+      aiService = new AIService({
+        chatApiKey: newConfig.chatApiKey || '',
+        aiBaseUrl: newConfig.aiBaseUrl || 'https://api.openai.com/v1',
+        aiModel: newConfig.aiModel || 'gpt-4o-mini'
+      })
+      return { success: true, enabled: aiService.enabled }
+    } catch (loadErr) {
+      return { success: false, error: 'Failed to load AI module: ' + loadErr.message }
+    }
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('ai-test-connection', async (event, testConfig) => {
+  try {
+    // If testConfig provided, create a temporary service to test with
+    if (testConfig && typeof testConfig === 'object' && testConfig.chatApiKey) {
+      const { AIService } = require('./ai')
+      const tempService = new AIService({
+        chatApiKey: testConfig.chatApiKey,
+        aiBaseUrl: testConfig.aiBaseUrl || 'https://api.openai.com/v1',
+        aiModel: testConfig.aiModel || 'gpt-4o-mini',
+        timeout: 15000
+      })
+      return await tempService.testConnection()
+    }
+    // Otherwise test current service
+    if (aiService && typeof aiService.testConnection === 'function') {
+      return await aiService.testConnection()
+    }
+    return { success: false, error: 'AI service not available' }
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
+})

@@ -1312,6 +1312,93 @@
             flex: none;
         }
 
+        /* ===== AI Provider Settings ===== */
+        .ai-key-input-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .ai-key-input {
+            flex: 1;
+            padding: 7px 10px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        .ai-key-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(47, 129, 247, 0.15);
+        }
+
+        .ai-key-toggle {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-muted);
+            padding: 6px 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: color var(--transition), border-color var(--transition);
+        }
+
+        .ai-key-toggle:hover {
+            color: var(--text-primary);
+            border-color: var(--text-muted);
+            box-shadow: none;
+        }
+
+        .ai-key-link {
+            color: var(--accent);
+            font-size: 12px;
+            text-decoration: none;
+            white-space: nowrap;
+            transition: color var(--transition);
+        }
+
+        .ai-key-link:hover {
+            color: var(--accent-hover);
+            text-decoration: underline;
+        }
+
+        .ai-url-input {
+            width: 200px;
+            padding: 6px 8px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 12px;
+        }
+
+        .ai-url-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(47, 129, 247, 0.15);
+        }
+
+        .ai-test-btn {
+            margin-right: 8px;
+        }
+
+        .ai-test-result {
+            font-size: 12px;
+            transition: color var(--transition);
+        }
+
+        .ai-test-ok {
+            color: var(--success);
+        }
+
+        .ai-test-error {
+            color: var(--danger);
+        }
+
         /* ===== Toast Notification ===== */
         .toast {
             position: fixed;

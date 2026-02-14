@@ -43,6 +43,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   aiAnalyzeError: (data) => ipcRenderer.invoke('ai-analyze-error', data),
   aiSuggestUrl: (data) => ipcRenderer.invoke('ai-suggest-url', data),
 
+  // AI configuration
+  aiUpdateConfig: (config) => ipcRenderer.invoke('ai-update-config', config),
+  aiTestConnection: (config) => ipcRenderer.invoke('ai-test-connection', config),
+
   // Add more API methods as needed
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
   onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', callback)

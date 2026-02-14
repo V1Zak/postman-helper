@@ -2513,7 +2513,37 @@ class AppState {
             editorFontSize: 13,
             maxHistoryDepth: 20,
             toastDuration: 2000,
-            confirmBeforeDelete: true
+            confirmBeforeDelete: true,
+            aiProvider: 'openai',
+            aiApiKey: '',
+            aiBaseUrl: '',
+            aiModel: ''
+        };
+    }
+
+    static get AI_PROVIDERS() {
+        return {
+            openai: {
+                name: 'OpenAI',
+                baseUrl: 'https://api.openai.com/v1',
+                models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo', 'o1', 'o1-mini', 'o3-mini'],
+                keyUrl: 'https://platform.openai.com/api-keys',
+                keyLabel: 'OpenAI Platform'
+            },
+            anthropic: {
+                name: 'Anthropic',
+                baseUrl: 'https://api.anthropic.com/v1',
+                models: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'claude-3-5-haiku-20241022', 'claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307'],
+                keyUrl: 'https://console.anthropic.com/settings/keys',
+                keyLabel: 'Anthropic Console'
+            },
+            gemini: {
+                name: 'Google Gemini',
+                baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+                models: ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'],
+                keyUrl: 'https://aistudio.google.com/apikey',
+                keyLabel: 'Google AI Studio'
+            }
         };
     }
 
@@ -2617,6 +2647,14 @@ class PostmanHelperApp {
         this.loadAutoSave();
         this.initChangeTracking();
         this.applySettingsToUI();
+        // Push saved AI config to main process on startup
+        if (this.state.aiApiKey && window.electronAPI && window.electronAPI.aiUpdateConfig) {
+            window.electronAPI.aiUpdateConfig({
+                chatApiKey: this.state.aiApiKey,
+                aiBaseUrl: this.state.aiBaseUrl,
+                aiModel: this.state.aiModel
+            }).catch(err => console.error('Failed to push AI config on startup:', err));
+        }
         // Show tutorial on first launch
         if (this.tutorial.shouldShow()) {
             setTimeout(() => this.tutorial.show(), 500);
@@ -4937,6 +4975,20 @@ class PostmanHelperApp {
         const methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
         const methodOptions = methods.map(m => `<option value="${m}" ${s.defaultMethod === m ? 'selected' : ''}>${m}</option>`).join('');
 
+        // AI provider presets
+        const providers = AppState.AI_PROVIDERS;
+        const currentProvider = s.aiProvider || 'openai';
+        const providerOptions = Object.keys(providers).map(k =>
+            `<option value="${k}" ${currentProvider === k ? 'selected' : ''}>${providers[k].name}</option>`
+        ).join('');
+        const providerInfo = providers[currentProvider] || providers.openai;
+        const currentModel = s.aiModel || providerInfo.models[0];
+        const modelOptions = providerInfo.models.map(m =>
+            `<option value="${m}" ${currentModel === m ? 'selected' : ''}>${m}</option>`
+        ).join('');
+        const currentBaseUrl = s.aiBaseUrl || providerInfo.baseUrl;
+        const maskedKey = s.aiApiKey ? '\u2022'.repeat(Math.min(s.aiApiKey.length, 32)) : '';
+
         // Create settings overlay (keeps settingsModal id for test compatibility)
         const settingsModal = document.createElement('div');
         settingsModal.id = 'settingsModal';
@@ -5060,6 +5112,48 @@ class PostmanHelperApp {
                 </div>
 
                 <div class="settings-group">
+                    <h4>AI Provider</h4>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Provider</div>
+                            <div class="settings-item-desc">Select AI service provider</div>
+                        </div>
+                        <select id="aiProvider" style="width:140px;">${providerOptions}</select>
+                    </div>
+                    <div class="settings-item" style="flex-direction:column;align-items:stretch;gap:6px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <div>
+                                <div class="settings-item-label">API Key</div>
+                                <div class="settings-item-desc">Stored locally, never sent to our servers</div>
+                            </div>
+                            <a id="aiKeyLink" href="#" class="ai-key-link" title="Get API key">${providerInfo.keyLabel} &#x2197;</a>
+                        </div>
+                        <div class="ai-key-input-wrap">
+                            <input type="password" id="aiApiKey" value="${maskedKey}" placeholder="Enter API key..." class="ai-key-input" autocomplete="off" spellcheck="false">
+                            <button type="button" id="aiKeyToggle" class="ai-key-toggle" aria-label="Show/hide key" title="Show/hide key">&#x25CE;</button>
+                        </div>
+                    </div>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Base URL</div>
+                            <div class="settings-item-desc">API endpoint base URL</div>
+                        </div>
+                        <input type="text" id="aiBaseUrl" value="${currentBaseUrl}" class="ai-url-input" placeholder="https://..." spellcheck="false">
+                    </div>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Model</div>
+                            <div class="settings-item-desc">AI model to use</div>
+                        </div>
+                        <select id="aiModel" style="width:240px;">${modelOptions}</select>
+                    </div>
+                    <div class="settings-item" style="justify-content:flex-end;border-bottom:none;padding-top:12px;">
+                        <button id="aiTestBtn" class="secondary ai-test-btn" style="padding:5px 14px;font-size:12px;">Test Connection</button>
+                        <span id="aiTestResult" class="ai-test-result"></span>
+                    </div>
+                </div>
+
+                <div class="settings-group">
                     <h4>Help</h4>
                     <div class="settings-item">
                         <div>
@@ -5118,6 +5212,114 @@ class PostmanHelperApp {
             this.applyTheme(e.target.checked ? 'dark' : 'light');
         });
 
+        // ===== AI Provider settings event handlers =====
+
+        // Track the actual API key (not the masked display value)
+        let _aiKeyValue = s.aiApiKey || '';
+        let _aiKeyRevealed = false;
+        const aiKeyInput = document.getElementById('aiApiKey');
+        const aiKeyToggle = document.getElementById('aiKeyToggle');
+        const aiProviderSelect = document.getElementById('aiProvider');
+        const aiModelSelect = document.getElementById('aiModel');
+        const aiBaseUrlInput = document.getElementById('aiBaseUrl');
+        const aiKeyLink = document.getElementById('aiKeyLink');
+        const aiTestBtn = document.getElementById('aiTestBtn');
+        const aiTestResult = document.getElementById('aiTestResult');
+
+        // When user types in the key field, capture the real value
+        aiKeyInput.addEventListener('input', () => {
+            _aiKeyValue = aiKeyInput.value;
+        });
+        aiKeyInput.addEventListener('focus', () => {
+            // On focus, show real value if user had a masked key
+            if (!_aiKeyRevealed && _aiKeyValue) {
+                aiKeyInput.type = 'password';
+                aiKeyInput.value = _aiKeyValue;
+            }
+        });
+
+        // Show/hide key toggle
+        aiKeyToggle.addEventListener('click', () => {
+            _aiKeyRevealed = !_aiKeyRevealed;
+            if (_aiKeyRevealed) {
+                aiKeyInput.type = 'text';
+                aiKeyInput.value = _aiKeyValue;
+                aiKeyToggle.textContent = '\u25C9';
+            } else {
+                aiKeyInput.type = 'password';
+                aiKeyInput.value = _aiKeyValue;
+                aiKeyToggle.textContent = '\u25CE';
+            }
+        });
+
+        // Provider change: update base URL, model list, and key link
+        aiProviderSelect.addEventListener('change', () => {
+            const prov = providers[aiProviderSelect.value] || providers.openai;
+            aiBaseUrlInput.value = prov.baseUrl;
+            // Rebuild model options
+            aiModelSelect.innerHTML = prov.models.map(m =>
+                '<option value="' + m + '">' + m + '</option>'
+            ).join('');
+            // Update key link
+            aiKeyLink.href = '#';
+            aiKeyLink.textContent = prov.keyLabel + ' \u2197';
+            aiKeyLink.setAttribute('data-url', prov.keyUrl);
+        });
+
+        // Open provider key page in external browser
+        aiKeyLink.setAttribute('data-url', providerInfo.keyUrl);
+        aiKeyLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            const url = aiKeyLink.getAttribute('data-url');
+            if (url && window.electronAPI) {
+                // Use shell.openExternal via a simple window.open fallback
+                window.open(url, '_blank');
+            } else if (url) {
+                window.open(url, '_blank');
+            }
+        });
+
+        // Test Connection button
+        aiTestBtn.addEventListener('click', async () => {
+            const key = _aiKeyValue;
+            if (!key) {
+                aiTestResult.textContent = 'No API key entered';
+                aiTestResult.className = 'ai-test-result ai-test-error';
+                return;
+            }
+            aiTestBtn.disabled = true;
+            aiTestBtn.textContent = 'Testing...';
+            aiTestResult.textContent = '';
+            aiTestResult.className = 'ai-test-result';
+
+            try {
+                const config = {
+                    chatApiKey: key,
+                    aiBaseUrl: aiBaseUrlInput.value,
+                    aiModel: aiModelSelect.value
+                };
+                let result;
+                if (window.electronAPI && window.electronAPI.aiTestConnection) {
+                    result = await window.electronAPI.aiTestConnection(config);
+                } else {
+                    result = { success: false, error: 'Electron API not available' };
+                }
+                if (result.success) {
+                    aiTestResult.textContent = 'Connected (' + (result.model || 'ok') + ')';
+                    aiTestResult.className = 'ai-test-result ai-test-ok';
+                } else {
+                    aiTestResult.textContent = result.error || 'Connection failed';
+                    aiTestResult.className = 'ai-test-result ai-test-error';
+                }
+            } catch (err) {
+                aiTestResult.textContent = err.message || 'Connection failed';
+                aiTestResult.className = 'ai-test-result ai-test-error';
+            } finally {
+                aiTestBtn.disabled = false;
+                aiTestBtn.textContent = 'Test Connection';
+            }
+        });
+
         // Trigger open animation
         requestAnimationFrame(() => {
             settingsModal.classList.add('open');
@@ -5168,8 +5370,24 @@ class PostmanHelperApp {
             s.toastDuration = parseInt(document.getElementById('toastDuration').value, 10) || 2000;
             s.maxHistoryDepth = parseInt(document.getElementById('maxHistoryDepth').value, 10) || 20;
 
+            // AI Provider settings
+            s.aiProvider = document.getElementById('aiProvider').value;
+            s.aiApiKey = _aiKeyValue;
+            s.aiBaseUrl = document.getElementById('aiBaseUrl').value;
+            s.aiModel = document.getElementById('aiModel').value;
+
             s.saveSettings();
             this.applySettingsToUI();
+
+            // Push AI config to main process
+            if (window.electronAPI && window.electronAPI.aiUpdateConfig) {
+                window.electronAPI.aiUpdateConfig({
+                    chatApiKey: s.aiApiKey,
+                    aiBaseUrl: s.aiBaseUrl,
+                    aiModel: s.aiModel
+                }).catch(err => console.error('Failed to update AI config:', err));
+            }
+
             this.showToast('Settings saved');
             closeSettings();
         });
@@ -6973,6 +7191,10 @@ class PostmanHelperApp {
                     maxHistoryDepth: this.state.maxHistoryDepth,
                     toastDuration: this.state.toastDuration,
                     confirmBeforeDelete: this.state.confirmBeforeDelete,
+                    aiProvider: this.state.aiProvider,
+                    aiApiKey: this.state.aiApiKey,
+                    aiBaseUrl: this.state.aiBaseUrl,
+                    aiModel: this.state.aiModel,
                     sidebarWidth: parseInt(getComputedStyle(document.querySelector('.sidebar')).width, 10) || 280
                 }
             };
@@ -7012,6 +7234,14 @@ class PostmanHelperApp {
                 this.applySettingsToUI();
                 if (data.settings.sidebarWidth) {
                     document.documentElement.style.setProperty('--sidebar-width', data.settings.sidebarWidth + 'px');
+                }
+                // Push restored AI config to main process
+                if (this.state.aiApiKey && window.electronAPI && window.electronAPI.aiUpdateConfig) {
+                    window.electronAPI.aiUpdateConfig({
+                        chatApiKey: this.state.aiApiKey,
+                        aiBaseUrl: this.state.aiBaseUrl,
+                        aiModel: this.state.aiModel
+                    }).catch(err => console.error('Failed to restore AI config:', err));
                 }
             }
 
