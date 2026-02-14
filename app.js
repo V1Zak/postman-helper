@@ -6,6 +6,15 @@
 // Built-in model classes — always defined, then overridden by window.models if available
 let Request, Collection, Folder, InheritanceManager;
 
+// Shared UUID generator — fallback for when models.js is not loaded (#122)
+function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
 Request = class {
     constructor(name, method, url, headers = {}, body = '', description = '', events = {}) {
         this.name = name || 'New Request';
@@ -16,17 +25,9 @@ Request = class {
         this.description = description || '';
         this.events = events || { prerequest: '', test: '' };
         this.tests = (events && events.test) ? events.test : '';
-        this.uuid = this.generateUUID();
+        this.uuid = generateUUID();
         this._history = [];
         this._maxHistoryDepth = 20;
-    }
-
-    generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
     }
 
     takeSnapshot() {

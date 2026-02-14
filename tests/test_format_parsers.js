@@ -33,9 +33,13 @@ function extractFormatParser() {
             break;
         }
     }
-    // Models start after the first line of actual class code
+    // Models start at generateUUID function or first class definition
     for (let i = 0; i < lines.length; i++) {
-        if (lines[i].match(/^Request\s*=\s*class/) || lines[i].match(/^class Request\b/)) {
+        if (lines[i].match(/^function generateUUID\(\)/) && modelsStart === -1) {
+            modelsStart = i;
+            break;
+        }
+        if ((lines[i].match(/^Request\s*=\s*class/) || lines[i].match(/^class Request\b/)) && modelsStart === -1) {
             modelsStart = i;
             break;
         }

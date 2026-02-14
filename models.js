@@ -1,5 +1,14 @@
 // Postman Helper Models - ES6 Module Version
 
+// Shared UUID generator — single source of truth (#122)
+function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
 class PostmanRequest {
     constructor(name, method, url, headers, body, description, events) {
         this.name = name || 'New Request';
@@ -10,7 +19,7 @@ class PostmanRequest {
         this.description = description || '';
         this.events = events || { prerequest: '', test: '' };
         this.tests = (events && events.test) ? events.test : '';
-        this.uuid = this.generateUUID();
+        this.uuid = generateUUID();
         this._history = [];
         this._maxHistoryDepth = 20;
     }
@@ -60,14 +69,6 @@ class PostmanRequest {
         return true;
     }
 
-    generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
-    }
-    
     toJSON() {
         return {
             name: this.name,
@@ -158,15 +159,7 @@ class Collection {
         this.name = name || 'New Collection';
         this.folders = [];
         this.requests = [];
-        this.uuid = this.generateUUID();
-    }
-    
-    generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
+        this.uuid = generateUUID();
     }
     
     addFolder(folder) {
@@ -329,15 +322,7 @@ class Folder {
         this.name = name || 'New Folder';
         this.requests = [];
         this.folders = [];
-        this.uuid = this.generateUUID();
-    }
-    
-    generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
+        this.uuid = generateUUID();
     }
     
     addRequest(request) {
@@ -477,6 +462,7 @@ class InheritanceManager {
 // Export all models
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
+        generateUUID,
         PostmanRequest,
         Collection,
         Folder,
@@ -486,6 +472,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
 if (typeof window !== 'undefined') {
     window.models = {
+        generateUUID,
         PostmanRequest,
         Collection,
         Folder,
