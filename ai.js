@@ -22,7 +22,7 @@ class AIService {
             value: config.chatApiKey || '',
             enumerable: false,
             writable: false,
-            configurable: false
+            configurable: true
         });
         this.baseUrl = config.aiBaseUrl || 'https://api.openai.com/v1';
         this.model = config.aiModel || 'gpt-4o-mini';
@@ -284,6 +284,46 @@ class AIService {
         const result = await this.complete(prompt, { systemPrompt, maxTokens });
         if (result.error) return { analysis: '', error: result.error };
         return { analysis: result.content };
+    }
+
+    /**
+     * Test the connection to the AI provider with a minimal request.
+     * @returns {Promise<{ success: boolean, model: string, error?: string }>}
+     */
+    async testConnection() {
+        if (!this.enabled) {
+            return { success: false, model: this.model, error: 'AI not configured — no API key set' };
+        }
+        try {
+            const result = await this.complete('Reply with the single word OK.', {
+                maxTokens: 10,
+                temperature: 0
+            });
+            if (result.error) {
+                return { success: false, model: this.model, error: result.error };
+            }
+            return { success: true, model: this.model };
+        } catch (err) {
+            return { success: false, model: this.model, error: err.message };
+        }
+    }
+
+    /**
+     * Reconfigure the service with new settings.
+     * @param {object} newConfig — { chatApiKey, aiBaseUrl, aiModel }
+     */
+    reconfigure(newConfig) {
+        if (!newConfig || typeof newConfig !== 'object') return;
+        // Redefine apiKey (non-enumerable)
+        Object.defineProperty(this, 'apiKey', {
+            value: newConfig.chatApiKey || '',
+            enumerable: false,
+            writable: false,
+            configurable: true
+        });
+        if (newConfig.aiBaseUrl) this.baseUrl = newConfig.aiBaseUrl;
+        if (newConfig.aiModel) this.model = newConfig.aiModel;
+        this.enabled = !!this.apiKey;
     }
 
     /**

@@ -829,3 +829,95 @@ describe('AIService: Real HTTP Integration', () => {
         assert.ok(result.error.includes('Invalid AI base URL'));
     });
 });
+
+// ===================== testConnection =====================
+
+describe('AIService: testConnection', () => {
+    it('returns error when not enabled', async () => {
+        const service = new AIService({});
+        const result = await service.testConnection();
+        assert.equal(result.success, false);
+        assert.ok(result.error.includes('no API key'));
+    });
+
+    it('returns success when complete succeeds', async () => {
+        const { service } = createMockService('OK');
+        const result = await service.testConnection();
+        assert.equal(result.success, true);
+        assert.equal(result.model, 'test-model');
+    });
+
+    it('returns error when complete fails', async () => {
+        const { service } = createMockService('', { error: 'Network error' });
+        const result = await service.testConnection();
+        assert.equal(result.success, false);
+        assert.ok(result.error.includes('Network error'));
+    });
+
+    it('returns model name in result', async () => {
+        const { service } = createMockService('OK', { model: 'gpt-4o' });
+        const result = await service.testConnection();
+        assert.equal(result.model, 'gpt-4o');
+    });
+
+    it('sends minimal request (maxTokens 10, temp 0)', async () => {
+        const { service, getCapturedBody } = createMockService('OK');
+        await service.testConnection();
+        const body = getCapturedBody();
+        assert.equal(body.max_tokens, 10);
+        assert.equal(body.temperature, 0);
+    });
+});
+
+// ===================== reconfigure =====================
+
+describe('AIService: reconfigure', () => {
+    it('updates API key and enables service', () => {
+        const service = new AIService({});
+        assert.equal(service.enabled, false);
+        service.reconfigure({ chatApiKey: 'new-key' });
+        assert.equal(service.enabled, true);
+        assert.equal(service.apiKey, 'new-key');
+    });
+
+    it('updates baseUrl', () => {
+        const service = new AIService({ chatApiKey: 'key' });
+        service.reconfigure({ chatApiKey: 'key', aiBaseUrl: 'https://new.api/v1' });
+        assert.equal(service.baseUrl, 'https://new.api/v1');
+    });
+
+    it('updates model', () => {
+        const service = new AIService({ chatApiKey: 'key' });
+        service.reconfigure({ chatApiKey: 'key', aiModel: 'claude-sonnet-4-20250514' });
+        assert.equal(service.model, 'claude-sonnet-4-20250514');
+    });
+
+    it('disables service when key is cleared', () => {
+        const service = new AIService({ chatApiKey: 'key' });
+        assert.equal(service.enabled, true);
+        service.reconfigure({ chatApiKey: '' });
+        assert.equal(service.enabled, false);
+    });
+
+    it('apiKey remains non-enumerable after reconfigure', () => {
+        const service = new AIService({ chatApiKey: 'key' });
+        service.reconfigure({ chatApiKey: 'new-key' });
+        assert.equal(service.apiKey, 'new-key');
+        assert.ok(!Object.keys(service).includes('apiKey'));
+    });
+
+    it('ignores null/invalid input', () => {
+        const service = new AIService({ chatApiKey: 'key', aiBaseUrl: 'https://old.api/v1' });
+        service.reconfigure(null);
+        assert.equal(service.baseUrl, 'https://old.api/v1');
+        assert.equal(service.enabled, true);
+        service.reconfigure('invalid');
+        assert.equal(service.enabled, true);
+    });
+
+    it('preserves existing baseUrl when not provided', () => {
+        const service = new AIService({ chatApiKey: 'key', aiBaseUrl: 'https://custom.api/v1' });
+        service.reconfigure({ chatApiKey: 'key2' });
+        assert.equal(service.baseUrl, 'https://custom.api/v1');
+    });
+});
