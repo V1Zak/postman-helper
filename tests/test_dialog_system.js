@@ -2,12 +2,18 @@
  * Unit tests for DialogSystem in app.js
  * Tests showPrompt, showConfirm, showAlert, showSelect, showMultiSelect
  * PRIORITY 4
+ *
+ * Extracts the real DialogSystem class from app.js source code to test
+ * actual implementation, not a re-created copy (#88).
  */
 const { describe, it, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
 
 let document, window, DialogSystem;
+
+// Extract the real DialogSystem once (it has no mutable state, all static methods)
+const { extractDialogSystem } = require('./helpers/app_class_extractor');
 
 beforeEach(() => {
     const dom = new JSDOM(`<!DOCTYPE html><html><body></body></html>`, {
@@ -18,222 +24,8 @@ beforeEach(() => {
     document = window.document;
     global.document = document;
 
-    // Re-create DialogSystem with all enhanced methods
-    DialogSystem = class {
-        static trapFocus(container) {
-            const focusable = container.querySelectorAll('input, select, button, textarea, [tabindex]:not([tabindex="-1"])');
-            if (focusable.length === 0) return;
-            const first = focusable[0];
-            const last = focusable[focusable.length - 1];
-            container.addEventListener('keydown', (e) => {
-                if (e.key !== 'Tab') return;
-                if (e.shiftKey) {
-                    if (document.activeElement === first) { e.preventDefault(); last.focus(); }
-                } else {
-                    if (document.activeElement === last) { e.preventDefault(); first.focus(); }
-                }
-            });
-        }
-
-        static showPrompt(title, defaultValue = '', callback) {
-            if (!callback) {
-                return new Promise(resolve => DialogSystem.showPrompt(title, defaultValue, resolve));
-            }
-
-            const overlay = document.createElement('div');
-            overlay.className = 'dialog-overlay';
-            const dialogBox = document.createElement('div');
-            dialogBox.className = 'dialog-box';
-            const titleElement = document.createElement('h3');
-            titleElement.textContent = title;
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.className = 'dialog-input';
-            input.value = defaultValue;
-            const buttonContainer = document.createElement('div');
-            buttonContainer.className = 'dialog-buttons';
-            const okButton = document.createElement('button');
-            okButton.textContent = 'OK';
-            okButton.className = 'dialog-btn primary';
-            const cancelButton = document.createElement('button');
-            cancelButton.textContent = 'Cancel';
-            cancelButton.className = 'dialog-btn secondary';
-
-            const cleanup = () => { overlay.remove(); };
-            okButton.addEventListener('click', () => { cleanup(); callback(input.value); });
-            cancelButton.addEventListener('click', () => { cleanup(); callback(null); });
-
-            buttonContainer.appendChild(okButton);
-            buttonContainer.appendChild(cancelButton);
-            dialogBox.appendChild(titleElement);
-            dialogBox.appendChild(input);
-            dialogBox.appendChild(buttonContainer);
-            overlay.appendChild(dialogBox);
-            document.body.appendChild(overlay);
-            DialogSystem.trapFocus(dialogBox);
-            input.focus();
-        }
-
-        static showConfirm(message, callback) {
-            if (!callback) {
-                return new Promise(resolve => DialogSystem.showConfirm(message, resolve));
-            }
-
-            const overlay = document.createElement('div');
-            overlay.className = 'dialog-overlay';
-            const dialogBox = document.createElement('div');
-            dialogBox.className = 'dialog-box';
-            const messageElement = document.createElement('p');
-            messageElement.textContent = message;
-            const buttonContainer = document.createElement('div');
-            buttonContainer.className = 'dialog-buttons';
-            const okButton = document.createElement('button');
-            okButton.textContent = 'OK';
-            okButton.className = 'dialog-btn primary';
-            const cancelButton = document.createElement('button');
-            cancelButton.textContent = 'Cancel';
-            cancelButton.className = 'dialog-btn secondary';
-
-            const cleanup = () => { overlay.remove(); };
-            okButton.addEventListener('click', () => { cleanup(); callback(true); });
-            cancelButton.addEventListener('click', () => { cleanup(); callback(false); });
-
-            buttonContainer.appendChild(okButton);
-            buttonContainer.appendChild(cancelButton);
-            dialogBox.appendChild(messageElement);
-            dialogBox.appendChild(buttonContainer);
-            overlay.appendChild(dialogBox);
-            document.body.appendChild(overlay);
-            DialogSystem.trapFocus(dialogBox);
-            okButton.focus();
-        }
-
-        static showAlert(message, callback) {
-            if (!callback) {
-                return new Promise(resolve => DialogSystem.showAlert(message, resolve));
-            }
-
-            const overlay = document.createElement('div');
-            overlay.className = 'dialog-overlay';
-            const dialogBox = document.createElement('div');
-            dialogBox.className = 'dialog-box';
-            const msgEl = document.createElement('p');
-            msgEl.textContent = message;
-            const buttonContainer = document.createElement('div');
-            buttonContainer.className = 'dialog-buttons';
-            const okButton = document.createElement('button');
-            okButton.textContent = 'OK';
-            okButton.className = 'dialog-btn primary';
-
-            const cleanup = () => { overlay.remove(); };
-            okButton.addEventListener('click', () => { cleanup(); callback(); });
-
-            buttonContainer.appendChild(okButton);
-            dialogBox.appendChild(msgEl);
-            dialogBox.appendChild(buttonContainer);
-            overlay.appendChild(dialogBox);
-            document.body.appendChild(overlay);
-            DialogSystem.trapFocus(dialogBox);
-            okButton.focus();
-        }
-
-        static showSelect(title, options, callback) {
-            if (!callback) {
-                return new Promise(resolve => DialogSystem.showSelect(title, options, resolve));
-            }
-
-            const overlay = document.createElement('div');
-            overlay.className = 'dialog-overlay';
-            const dialogBox = document.createElement('div');
-            dialogBox.className = 'dialog-box';
-            const titleEl = document.createElement('h3');
-            titleEl.textContent = title;
-            const select = document.createElement('select');
-            select.className = 'dialog-select';
-            options.forEach(opt => {
-                const option = document.createElement('option');
-                option.value = opt.value;
-                option.textContent = opt.label;
-                if (opt.selected) option.selected = true;
-                select.appendChild(option);
-            });
-            const buttonContainer = document.createElement('div');
-            buttonContainer.className = 'dialog-buttons';
-            const okButton = document.createElement('button');
-            okButton.textContent = 'OK';
-            okButton.className = 'dialog-btn primary';
-            const cancelButton = document.createElement('button');
-            cancelButton.textContent = 'Cancel';
-            cancelButton.className = 'dialog-btn secondary';
-
-            const cleanup = () => { overlay.remove(); };
-            okButton.addEventListener('click', () => { cleanup(); callback(select.value); });
-            cancelButton.addEventListener('click', () => { cleanup(); callback(null); });
-
-            buttonContainer.appendChild(okButton);
-            buttonContainer.appendChild(cancelButton);
-            dialogBox.appendChild(titleEl);
-            dialogBox.appendChild(select);
-            dialogBox.appendChild(buttonContainer);
-            overlay.appendChild(dialogBox);
-            document.body.appendChild(overlay);
-            DialogSystem.trapFocus(dialogBox);
-            select.focus();
-        }
-
-        static showMultiSelect(title, options, callback) {
-            if (!callback) {
-                return new Promise(resolve => DialogSystem.showMultiSelect(title, options, resolve));
-            }
-
-            const overlay = document.createElement('div');
-            overlay.className = 'dialog-overlay';
-            const dialogBox = document.createElement('div');
-            dialogBox.className = 'dialog-box';
-            const titleEl = document.createElement('h3');
-            titleEl.textContent = title;
-            const listContainer = document.createElement('div');
-            listContainer.className = 'dialog-multi-list';
-
-            options.forEach((opt, i) => {
-                const item = document.createElement('label');
-                item.className = 'dialog-multi-item';
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.value = opt.value;
-                checkbox.checked = !!opt.checked;
-                checkbox.dataset.index = i;
-                const labelText = document.createElement('span');
-                labelText.textContent = opt.label;
-                item.appendChild(checkbox);
-                item.appendChild(labelText);
-                listContainer.appendChild(item);
-            });
-
-            const buttonContainer = document.createElement('div');
-            buttonContainer.className = 'dialog-buttons';
-            const okButton = document.createElement('button');
-            okButton.textContent = 'OK';
-            okButton.className = 'dialog-btn primary';
-            const cancelButton = document.createElement('button');
-            cancelButton.textContent = 'Cancel';
-            cancelButton.className = 'dialog-btn secondary';
-
-            const getSelected = () => Array.from(listContainer.querySelectorAll('input:checked')).map(cb => cb.value);
-            const cleanup = () => { overlay.remove(); };
-            okButton.addEventListener('click', () => { cleanup(); callback(getSelected()); });
-            cancelButton.addEventListener('click', () => { cleanup(); callback(null); });
-
-            buttonContainer.appendChild(okButton);
-            buttonContainer.appendChild(cancelButton);
-            dialogBox.appendChild(titleEl);
-            dialogBox.appendChild(listContainer);
-            dialogBox.appendChild(buttonContainer);
-            overlay.appendChild(dialogBox);
-            document.body.appendChild(overlay);
-            DialogSystem.trapFocus(dialogBox);
-        }
-    };
+    // Extract the REAL DialogSystem class from app.js (not a re-created copy)
+    DialogSystem = extractDialogSystem();
 });
 
 // ─── showPrompt ────────────────────────────────────────────────────────────────
@@ -256,22 +48,23 @@ describe('DialogSystem', () => {
             assert.equal(input.value, 'MyDefault');
         });
 
-        it('OK button returns input value and removes overlay', (_, done) => {
+        it('OK button returns input value and starts closing overlay', (_, done) => {
             DialogSystem.showPrompt('Name:', 'Test', (value) => {
                 assert.equal(value, 'Test');
+                // _closeOverlay adds 'closing' class immediately, then removes after 120ms
                 const overlay = document.querySelector('.dialog-overlay');
-                assert.equal(overlay, null, 'overlay should be removed');
+                assert.ok(overlay.classList.contains('closing'), 'overlay should have closing class');
                 done();
             });
             const ok = document.querySelector('.dialog-btn.primary');
             ok.click();
         });
 
-        it('Cancel button returns null and removes overlay', (_, done) => {
+        it('Cancel button returns null and starts closing overlay', (_, done) => {
             DialogSystem.showPrompt('Name:', 'Test', (value) => {
                 assert.equal(value, null);
                 const overlay = document.querySelector('.dialog-overlay');
-                assert.equal(overlay, null, 'overlay should be removed');
+                assert.ok(overlay.classList.contains('closing'), 'overlay should have closing class');
                 done();
             });
             const cancel = document.querySelector('.dialog-btn.secondary');
@@ -323,9 +116,10 @@ describe('DialogSystem', () => {
             document.querySelector('.dialog-btn.secondary').click();
         });
 
-        it('removes overlay after action', (_, done) => {
+        it('starts closing overlay after action', (_, done) => {
             DialogSystem.showConfirm('Sure?', () => {
-                assert.equal(document.querySelector('.dialog-overlay'), null);
+                const overlay = document.querySelector('.dialog-overlay');
+                assert.ok(overlay.classList.contains('closing'), 'overlay should have closing class');
                 done();
             });
             document.querySelector('.dialog-btn.primary').click();
@@ -358,9 +152,10 @@ describe('DialogSystem', () => {
             assert.equal(buttons[0].textContent, 'OK');
         });
 
-        it('OK button calls callback and removes overlay', (_, done) => {
+        it('OK button calls callback and starts closing overlay', (_, done) => {
             DialogSystem.showAlert('Done', () => {
-                assert.equal(document.querySelector('.dialog-overlay'), null);
+                const overlay = document.querySelector('.dialog-overlay');
+                assert.ok(overlay.classList.contains('closing'), 'overlay should have closing class');
                 done();
             });
             document.querySelector('.dialog-btn.primary').click();
@@ -427,9 +222,10 @@ describe('DialogSystem', () => {
             assert.equal(select.value, 'b');
         });
 
-        it('removes overlay after action', (_, done) => {
+        it('starts closing overlay after action', (_, done) => {
             DialogSystem.showSelect('Pick:', options, () => {
-                assert.equal(document.querySelector('.dialog-overlay'), null);
+                const overlay = document.querySelector('.dialog-overlay');
+                assert.ok(overlay.classList.contains('closing'), 'overlay should have closing class');
                 done();
             });
             document.querySelector('.dialog-btn.primary').click();
@@ -510,9 +306,10 @@ describe('DialogSystem', () => {
             document.querySelector('.dialog-btn.primary').click();
         });
 
-        it('removes overlay after action', (_, done) => {
+        it('starts closing overlay after action', (_, done) => {
             DialogSystem.showMultiSelect('Methods:', options, () => {
-                assert.equal(document.querySelector('.dialog-overlay'), null);
+                const overlay = document.querySelector('.dialog-overlay');
+                assert.ok(overlay.classList.contains('closing'), 'overlay should have closing class');
                 done();
             });
             document.querySelector('.dialog-btn.primary').click();

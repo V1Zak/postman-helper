@@ -1,15 +1,18 @@
 /**
  * Unit tests for per-request change tracking (Issue #9)
  * Tests: AppState dirty tracking, clean snapshots, dirty indicators
+ *
+ * Extracts the real AppState class from app.js source code to test
+ * actual implementation, not a re-created copy (#88).
  */
 const { describe, it, before, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
 
-let AppState, Request, Collection, InheritanceManager;
+let AppState, Request, Collection;
 
 before(() => {
-    // Set up minimal DOM
+    // Set up minimal DOM and localStorage before extracting AppState
     const dom = new JSDOM(`<!DOCTYPE html><html><body>
         <div id="statusInfo"></div>
         <div id="collectionTree"></div>
@@ -18,110 +21,16 @@ before(() => {
     });
     global.window = dom.window;
     global.document = dom.window.document;
+    global.localStorage = dom.window.localStorage;
 
-    // Extract classes from app.js
-    const { extractAppClasses } = require('./helpers/app_class_extractor');
+    // Extract real classes from app.js (not re-created copies)
+    const { extractAppClasses, extractAppState } = require('./helpers/app_class_extractor');
     const classes = extractAppClasses();
     Request = classes.Request;
     Collection = classes.Collection;
-    InheritanceManager = classes.InheritanceManager;
 
-    // Re-create AppState with dirty tracking (mirrors app.js implementation)
-    AppState = class {
-        constructor() {
-            this.collections = [];
-            this.currentCollection = null;
-            this.currentRequest = null;
-            this.currentFolder = null;
-            this.unsavedChanges = false;
-            this.inheritanceManager = new InheritanceManager();
-            this.filters = { text: '', methods: [], hasTests: false, hasBody: false, useRegex: false };
-            this.environments = [];
-            this.activeEnvironment = null;
-            // Per-request dirty tracking (uses UUID as key, not name)
-            this._dirtyRequests = new Set();
-            this._cleanSnapshots = new Map();
-        }
-
-        setCurrentCollection(collection) {
-            this.currentCollection = collection;
-            if (collection && !this.collections.includes(collection)) {
-                this.collections.push(collection);
-            }
-            // Note: do NOT reset unsavedChanges here (#83)
-        }
-
-        setCurrentRequest(request) {
-            this.currentRequest = request;
-        }
-
-        setCurrentFolder(folder) {
-            this.currentFolder = folder;
-        }
-
-        markAsChanged() {
-            this.unsavedChanges = true;
-            this.updateStatusBar();
-            if (this._onChanged) this._onChanged();
-        }
-
-        updateStatusBar() {
-            const statusInfo = document.getElementById('statusInfo');
-            if (this.currentCollection) {
-                const changeIndicator = this.unsavedChanges ? '• ' : '';
-                const dirtyCount = this._dirtyRequests.size;
-                const dirtyLabel = dirtyCount > 0 ? ` | ${dirtyCount} unsaved` : '';
-                const colCount = this.collections.length > 1 ? ` (${this.collections.length} collections)` : '';
-                statusInfo.textContent = `${changeIndicator}${this.currentCollection.name} | ${this.currentCollection.requests.length} requests, ${this.currentCollection.folders.length} folders${colCount}${dirtyLabel}`;
-            } else {
-                statusInfo.textContent = 'No collection loaded';
-            }
-        }
-
-        markRequestDirty(requestId) {
-            if (!requestId) return;
-            this._dirtyRequests.add(requestId);
-            this.markAsChanged();
-        }
-
-        markRequestClean(requestId) {
-            if (!requestId) return;
-            this._dirtyRequests.delete(requestId);
-        }
-
-        isRequestDirty(requestId) {
-            return this._dirtyRequests.has(requestId);
-        }
-
-        clearAllDirty() {
-            this._dirtyRequests.clear();
-            this._cleanSnapshots.clear();
-        }
-
-        takeCleanSnapshot(request) {
-            if (!request || !request.uuid) return;
-            this._cleanSnapshots.set(request.uuid, {
-                method: request.method || 'GET',
-                url: request.url || '',
-                headers: JSON.stringify(request.headers || {}),
-                body: request.body || '',
-                tests: request.tests || '',
-                description: request.description || ''
-            });
-        }
-
-        hasRequestChanged(request) {
-            if (!request || !request.uuid) return false;
-            const snapshot = this._cleanSnapshots.get(request.uuid);
-            if (!snapshot) return false;
-            return (request.method || 'GET') !== snapshot.method
-                || (request.url || '') !== snapshot.url
-                || JSON.stringify(request.headers || {}) !== snapshot.headers
-                || (request.body || '') !== snapshot.body
-                || (request.tests || '') !== snapshot.tests
-                || (request.description || '') !== snapshot.description;
-        }
-    };
+    // Extract the REAL AppState class from app.js
+    AppState = extractAppState();
 });
 
 describe('Change Tracking: Dirty State Basics', () => {

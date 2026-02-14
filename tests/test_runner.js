@@ -2,7 +2,7 @@
  * Unit tests for CI/CD Pipeline Integration (Issue #15)
  * Tests: CollectionRunner, ConsoleReporter, JUnitReporter, JSONReporter, CLI parseArgs
  */
-const { describe, it, before, beforeEach } = require('node:test');
+const { describe, it, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
 const fs = require('fs');
@@ -417,6 +417,166 @@ describe('CollectionRunner: httpRequest', () => {
 
     // Note: We don't test actual HTTP calls in unit tests — those would be integration tests.
     // The httpRequest method mirrors main.js:101-157 which is already battle-tested.
+});
+
+// ===================== httpRequest: Mock Server Tests (#88) =====================
+
+const http = require('http');
+
+describe('CollectionRunner: httpRequest with mock server', () => {
+    let server;
+    let serverPort;
+    let runner;
+
+    before(async () => {
+        runner = new CollectionRunner({ timeout: 5000 });
+        // Create a simple HTTP server for testing
+        server = http.createServer((req, res) => {
+            const url = new URL(req.url, `http://localhost`);
+
+            if (url.pathname === '/ok') {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } else if (url.pathname === '/not-found') {
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('Not Found');
+            } else if (url.pathname === '/server-error') {
+                res.writeHead(500, { 'Content-Type': 'text/plain' });
+                res.end('Internal Server Error');
+            } else if (url.pathname === '/echo-headers') {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(req.headers));
+            } else if (url.pathname === '/echo-method') {
+                res.writeHead(200, { 'Content-Type': 'text/plain' });
+                res.end(req.method);
+            } else if (url.pathname === '/slow') {
+                // Respond after 3 seconds (should timeout with 2s timeout)
+                setTimeout(() => {
+                    res.writeHead(200);
+                    res.end('slow response');
+                }, 3000);
+            } else if (url.pathname === '/echo-body') {
+                let body = '';
+                req.on('data', (chunk) => { body += chunk; });
+                req.on('end', () => {
+                    res.writeHead(200, { 'Content-Type': 'text/plain' });
+                    res.end(body);
+                });
+            } else {
+                res.writeHead(200);
+                res.end('OK');
+            }
+        });
+
+        await new Promise((resolve) => {
+            server.listen(0, '127.0.0.1', () => {
+                serverPort = server.address().port;
+                resolve();
+            });
+        });
+    });
+
+    after(() => {
+        if (server) server.close();
+    });
+
+    it('sends GET request and receives 200 JSON response', async () => {
+        const result = await runner.httpRequest({
+            method: 'GET',
+            url: `http://127.0.0.1:${serverPort}/ok`
+        });
+        assert.equal(result.status, 200);
+        assert.ok(result.body.includes('"success":true'));
+        assert.equal(result.headers['content-type'], 'application/json');
+    });
+
+    it('handles 404 response', async () => {
+        const result = await runner.httpRequest({
+            method: 'GET',
+            url: `http://127.0.0.1:${serverPort}/not-found`
+        });
+        assert.equal(result.status, 404);
+        assert.equal(result.body, 'Not Found');
+    });
+
+    it('handles 500 server error', async () => {
+        const result = await runner.httpRequest({
+            method: 'GET',
+            url: `http://127.0.0.1:${serverPort}/server-error`
+        });
+        assert.equal(result.status, 500);
+    });
+
+    it('sends custom headers', async () => {
+        const result = await runner.httpRequest({
+            method: 'GET',
+            url: `http://127.0.0.1:${serverPort}/echo-headers`,
+            headers: { 'X-Custom-Header': 'test-value', 'Authorization': 'Bearer token123' }
+        });
+        const headers = JSON.parse(result.body);
+        assert.equal(headers['x-custom-header'], 'test-value');
+        assert.equal(headers['authorization'], 'Bearer token123');
+    });
+
+    it('sends POST request with body', async () => {
+        const body = '{"name":"test","value":42}';
+        const result = await runner.httpRequest({
+            method: 'POST',
+            url: `http://127.0.0.1:${serverPort}/echo-body`,
+            body: body
+        });
+        assert.equal(result.status, 200);
+        assert.equal(result.body, body);
+    });
+
+    it('sends correct HTTP method', async () => {
+        for (const method of ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']) {
+            const result = await runner.httpRequest({
+                method,
+                url: `http://127.0.0.1:${serverPort}/echo-method`
+            });
+            assert.equal(result.body, method);
+        }
+    });
+
+    it('times out on slow responses', async () => {
+        const shortTimeoutRunner = new CollectionRunner({ timeout: 500 });
+        await assert.rejects(
+            () => shortTimeoutRunner.httpRequest({
+                method: 'GET',
+                url: `http://127.0.0.1:${serverPort}/slow`
+            }),
+            (err) => err.message.includes('timed out') || err.message.includes('timeout') || err.message.includes('ECONNRESET') || err.code === 'ECONNRESET'
+        );
+    });
+
+    it('handles connection refused', async () => {
+        await assert.rejects(
+            () => runner.httpRequest({
+                method: 'GET',
+                url: 'http://127.0.0.1:1/unreachable'
+            }),
+            (err) => err.message.includes('ECONNREFUSED') || err.code === 'ECONNREFUSED'
+        );
+    });
+
+    it('returns response headers', async () => {
+        const result = await runner.httpRequest({
+            method: 'GET',
+            url: `http://127.0.0.1:${serverPort}/ok`
+        });
+        assert.ok(result.headers);
+        assert.ok(typeof result.headers === 'object');
+        assert.ok('content-type' in result.headers);
+    });
+
+    it('returns statusText', async () => {
+        const result = await runner.httpRequest({
+            method: 'GET',
+            url: `http://127.0.0.1:${serverPort}/ok`
+        });
+        assert.equal(result.statusText, 'OK');
+    });
 });
 
 // ===================== executeRequest =====================
