@@ -491,11 +491,7 @@ class DialogSystem {
             if (e.key === 'Enter') { cleanup(); callback(input.value); }
             else if (e.key === 'Escape') { cleanup(); callback(null); }
         };
-
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { cleanup(); callback(input.value); }
-            else if (e.key === 'Escape') { cleanup(); callback(null); }
-        });
+        document.addEventListener('keydown', keyHandler);
 
         buttonContainer.appendChild(okButton);
         buttonContainer.appendChild(cancelButton);
@@ -550,7 +546,7 @@ class DialogSystem {
 
         const keyHandler = (e) => {
             if (e.key === 'Enter') { cleanup(); callback(true); }
-            if (e.key === 'Escape') { cleanup(); callback(false); }
+            else if (e.key === 'Escape') { cleanup(); callback(false); }
         };
         document.addEventListener('keydown', keyHandler);
 
