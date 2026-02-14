@@ -80,6 +80,24 @@ beforeEach(() => {
             };
         }
 
+        // Numeric settings bounds — single source of truth for clamping (#119)
+        static get SETTINGS_BOUNDS() {
+            return {
+                requestTimeout: { min: 1, max: 300 },
+                editorFontSize: { min: 10, max: 24 },
+                toastDuration:  { min: 500, max: 10000 },
+                maxHistoryDepth: { min: 5, max: 100 }
+            };
+        }
+
+        static clampSetting(key, value) {
+            const bounds = AppState.SETTINGS_BOUNDS[key];
+            if (!bounds) return value;
+            const num = typeof value === 'number' ? value : parseInt(value, 10);
+            if (isNaN(num)) return AppState.DEFAULT_SETTINGS[key];
+            return Math.min(Math.max(num, bounds.min), bounds.max);
+        }
+
         static get AI_PROVIDERS() {
             return {
                 openai: {
@@ -113,7 +131,12 @@ beforeEach(() => {
                     const saved = JSON.parse(raw);
                     const defaults = AppState.DEFAULT_SETTINGS;
                     for (const key of Object.keys(defaults)) {
-                        this[key] = saved[key] !== undefined ? saved[key] : defaults[key];
+                        let val = saved[key] !== undefined ? saved[key] : defaults[key];
+                        // Clamp numeric settings from potentially tampered storage (#119)
+                        if (AppState.SETTINGS_BOUNDS[key]) {
+                            val = AppState.clampSetting(key, val);
+                        }
+                        this[key] = val;
                     }
                 }
             } catch (e) {
@@ -468,5 +491,121 @@ describe('AppState: AI settings save/load round-trip', () => {
         assert.equal(s.aiApiKey, '');
         assert.equal(s.aiBaseUrl, '');
         assert.equal(s.aiModel, '');
+    });
+});
+
+// ===================== Settings Clamping (#119) =====================
+
+describe('AppState: SETTINGS_BOUNDS', () => {
+    it('defines bounds for requestTimeout', () => {
+        const b = AppState.SETTINGS_BOUNDS.requestTimeout;
+        assert.equal(b.min, 1);
+        assert.equal(b.max, 300);
+    });
+
+    it('defines bounds for editorFontSize', () => {
+        const b = AppState.SETTINGS_BOUNDS.editorFontSize;
+        assert.equal(b.min, 10);
+        assert.equal(b.max, 24);
+    });
+
+    it('defines bounds for toastDuration', () => {
+        const b = AppState.SETTINGS_BOUNDS.toastDuration;
+        assert.equal(b.min, 500);
+        assert.equal(b.max, 10000);
+    });
+
+    it('defines bounds for maxHistoryDepth', () => {
+        const b = AppState.SETTINGS_BOUNDS.maxHistoryDepth;
+        assert.equal(b.min, 5);
+        assert.equal(b.max, 100);
+    });
+});
+
+describe('AppState: clampSetting', () => {
+    it('clamps value below min to min', () => {
+        assert.equal(AppState.clampSetting('requestTimeout', 0), 1);
+        assert.equal(AppState.clampSetting('requestTimeout', -10), 1);
+        assert.equal(AppState.clampSetting('editorFontSize', 5), 10);
+        assert.equal(AppState.clampSetting('toastDuration', 100), 500);
+        assert.equal(AppState.clampSetting('maxHistoryDepth', 1), 5);
+    });
+
+    it('clamps value above max to max', () => {
+        assert.equal(AppState.clampSetting('requestTimeout', 999), 300);
+        assert.equal(AppState.clampSetting('editorFontSize', 50), 24);
+        assert.equal(AppState.clampSetting('toastDuration', 99999), 10000);
+        assert.equal(AppState.clampSetting('maxHistoryDepth', 500), 100);
+    });
+
+    it('passes through values within bounds', () => {
+        assert.equal(AppState.clampSetting('requestTimeout', 30), 30);
+        assert.equal(AppState.clampSetting('editorFontSize', 16), 16);
+        assert.equal(AppState.clampSetting('toastDuration', 3000), 3000);
+        assert.equal(AppState.clampSetting('maxHistoryDepth', 50), 50);
+    });
+
+    it('handles string values (from input elements)', () => {
+        assert.equal(AppState.clampSetting('requestTimeout', '60'), 60);
+        assert.equal(AppState.clampSetting('editorFontSize', '14'), 14);
+    });
+
+    it('returns default for NaN input', () => {
+        assert.equal(AppState.clampSetting('requestTimeout', 'abc'), 30);
+        assert.equal(AppState.clampSetting('editorFontSize', ''), 13);
+    });
+
+    it('returns value unchanged for non-bounded keys', () => {
+        assert.equal(AppState.clampSetting('darkMode', true), true);
+        assert.equal(AppState.clampSetting('defaultMethod', 'GET'), 'GET');
+    });
+});
+
+describe('AppState: loadSettings clamps tampered values (#119)', () => {
+    it('clamps excessively large requestTimeout from storage', () => {
+        localStorage.setItem(AppState.SETTINGS_KEY, JSON.stringify({
+            requestTimeout: 9999
+        }));
+        const s = new AppState();
+        s.loadSettings();
+        assert.equal(s.requestTimeout, 300);
+    });
+
+    it('clamps zero editorFontSize from storage', () => {
+        localStorage.setItem(AppState.SETTINGS_KEY, JSON.stringify({
+            editorFontSize: 0
+        }));
+        const s = new AppState();
+        s.loadSettings();
+        assert.equal(s.editorFontSize, 10);
+    });
+
+    it('clamps negative toastDuration from storage', () => {
+        localStorage.setItem(AppState.SETTINGS_KEY, JSON.stringify({
+            toastDuration: -1000
+        }));
+        const s = new AppState();
+        s.loadSettings();
+        assert.equal(s.toastDuration, 500);
+    });
+
+    it('clamps maxHistoryDepth below minimum', () => {
+        localStorage.setItem(AppState.SETTINGS_KEY, JSON.stringify({
+            maxHistoryDepth: 1
+        }));
+        const s = new AppState();
+        s.loadSettings();
+        assert.equal(s.maxHistoryDepth, 5);
+    });
+
+    it('does not clamp non-numeric settings', () => {
+        localStorage.setItem(AppState.SETTINGS_KEY, JSON.stringify({
+            darkMode: false,
+            defaultMethod: 'DELETE'
+        }));
+        const s = new AppState();
+        s.loadSettings();
+        assert.equal(s.darkMode, false);
+        assert.equal(s.defaultMethod, 'DELETE');
     });
 });

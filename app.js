@@ -2566,6 +2566,22 @@ class AppState {
         };
     }
 
+    // Numeric settings bounds — single source of truth for clamping (#119)
+    static SETTINGS_BOUNDS = {
+        requestTimeout: { min: 1, max: 300 },
+        editorFontSize: { min: 10, max: 24 },
+        toastDuration:  { min: 500, max: 10000 },
+        maxHistoryDepth: { min: 5, max: 100 }
+    };
+
+    static clampSetting(key, value) {
+        const bounds = AppState.SETTINGS_BOUNDS[key];
+        if (!bounds) return value;
+        const num = typeof value === 'number' ? value : parseInt(value, 10);
+        if (isNaN(num)) return AppState.DEFAULT_SETTINGS[key];
+        return Math.min(Math.max(num, bounds.min), bounds.max);
+    }
+
     loadSettings() {
         try {
             const raw = localStorage.getItem(AppState.SETTINGS_KEY);
@@ -2573,7 +2589,12 @@ class AppState {
                 const saved = JSON.parse(raw);
                 const defaults = AppState.DEFAULT_SETTINGS;
                 for (const key of Object.keys(defaults)) {
-                    this[key] = saved[key] !== undefined ? saved[key] : defaults[key];
+                    let val = saved[key] !== undefined ? saved[key] : defaults[key];
+                    // Clamp numeric settings from potentially tampered storage (#119)
+                    if (AppState.SETTINGS_BOUNDS[key]) {
+                        val = AppState.clampSetting(key, val);
+                    }
+                    this[key] = val;
                 }
             }
         } catch (e) {
@@ -5431,10 +5452,11 @@ class PostmanHelperApp {
             s.inheritGlobally = document.getElementById('inheritGlobally').checked;
             s.confirmBeforeDelete = document.getElementById('confirmBeforeDelete').checked;
             s.defaultMethod = document.getElementById('defaultMethod').value;
-            s.requestTimeout = parseInt(document.getElementById('requestTimeout').value, 10) || 30;
-            s.editorFontSize = parseInt(document.getElementById('editorFontSize').value, 10) || 13;
-            s.toastDuration = parseInt(document.getElementById('toastDuration').value, 10) || 2000;
-            s.maxHistoryDepth = parseInt(document.getElementById('maxHistoryDepth').value, 10) || 20;
+            // Clamp numeric settings to their defined bounds (#119)
+            s.requestTimeout = AppState.clampSetting('requestTimeout', document.getElementById('requestTimeout').value);
+            s.editorFontSize = AppState.clampSetting('editorFontSize', document.getElementById('editorFontSize').value);
+            s.toastDuration = AppState.clampSetting('toastDuration', document.getElementById('toastDuration').value);
+            s.maxHistoryDepth = AppState.clampSetting('maxHistoryDepth', document.getElementById('maxHistoryDepth').value);
 
             // AI Provider settings
             s.aiProvider = document.getElementById('aiProvider').value;
