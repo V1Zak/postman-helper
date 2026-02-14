@@ -34,7 +34,12 @@ before(() => {
         try {
             const pattern = useRegex ? searchTerm : escapeRegex(searchTerm);
             const regex = new RegExp(`(${pattern})`, 'gi');
-            return escapeHtml(text).replace(regex, '<mark class="search-highlight">$1</mark>');
+            const escaped = escapeHtml(text);
+            // Use a replacer function instead of '$1' string to avoid any
+            // edge-case where a regex capture could inject markup (#126)
+            return escaped.replace(regex, function (match) {
+                return '<mark class="search-highlight">' + match + '</mark>';
+            });
         } catch {
             return escapeHtml(text);
         }
@@ -173,6 +178,32 @@ describe('highlightMatch XSS safety', () => {
     it('handles null/undefined text safely', () => {
         assert.equal(highlightMatch(null, 'test', false), '');
         assert.equal(highlightMatch(undefined, 'test', false), '');
+    });
+
+    it('uses replacer function instead of $1 string (#126)', () => {
+        // Verify the app.js implementation uses a function replacer, not '$1'
+        const appPath = path.join(__dirname, '..', 'app.js');
+        const src = fs.readFileSync(appPath, 'utf-8');
+        // Should NOT contain the old '$1' string replacement pattern
+        const oldPattern = ".replace(regex, '<mark class=\"search-highlight\">$1</mark>')";
+        assert.ok(!src.includes(oldPattern),
+            'highlightMatch should not use $1 string replacement');
+        // Should use a function replacer
+        assert.ok(src.includes('return escaped.replace(regex, function (match)'),
+            'highlightMatch should use a function replacer');
+    });
+
+    it('regex matching escaped entities does not inject markup', () => {
+        // A crafted regex that matches across an HTML entity boundary
+        // After escapeHtml, '<' becomes '&lt;' — a regex matching 'lt' should
+        // only wrap the match text, not introduce new HTML
+        const result = highlightMatch('a < b', 'lt', true);
+        // Should contain the highlighted 'lt' inside the escaped entity
+        assert.ok(result.includes('<mark class="search-highlight">lt</mark>'));
+        // The mark tag content should not contain raw '<' or '>'
+        const markContent = result.match(/<mark[^>]*>(.*?)<\/mark>/);
+        assert.ok(markContent, 'should have a mark tag');
+        assert.ok(!markContent[1].includes('<'), 'mark content should not contain raw <');
     });
 });
 

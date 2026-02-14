@@ -4485,7 +4485,12 @@ class PostmanHelperApp {
         try {
             const pattern = useRegex ? searchTerm : this.escapeRegex(searchTerm);
             const regex = new RegExp(`(${pattern})`, 'gi');
-            return this.escapeHtml(text).replace(regex, '<mark class="search-highlight">$1</mark>');
+            const escaped = this.escapeHtml(text);
+            // Use a replacer function instead of '$1' string to avoid any
+            // edge-case where a regex capture could inject markup (#126)
+            return escaped.replace(regex, function (match) {
+                return '<mark class="search-highlight">' + match + '</mark>';
+            });
         } catch {
             return this.escapeHtml(text);
         }
