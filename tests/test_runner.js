@@ -941,6 +941,86 @@ describe('CLI: VERSION', () => {
     });
 });
 
+// ===================== runTests: VM Sandbox Security =====================
+
+describe('CollectionRunner: runTests VM sandbox', () => {
+    let runner;
+    before(() => { runner = new CollectionRunner(); });
+
+    const mockResponse = { status: 200, body: '{"ok": true}', headers: {} };
+
+    it('cannot access process global', () => {
+        const script = "tests['No process'] = (typeof process === 'undefined');";
+        const result = runner.runTests(script, mockResponse, 100);
+        assert.equal(result.results[0].passed, true);
+    });
+
+    it('cannot access require', () => {
+        const script = "tests['No require'] = (typeof require === 'undefined');";
+        const result = runner.runTests(script, mockResponse, 100);
+        assert.equal(result.results[0].passed, true);
+    });
+
+    it('cannot access global', () => {
+        const script = "tests['No global'] = (typeof global === 'undefined');";
+        const result = runner.runTests(script, mockResponse, 100);
+        assert.equal(result.results[0].passed, true);
+    });
+
+    it('cannot access module', () => {
+        const script = "tests['No module'] = (typeof module === 'undefined');";
+        const result = runner.runTests(script, mockResponse, 100);
+        assert.equal(result.results[0].passed, true);
+    });
+
+    it('times out on infinite loops', () => {
+        const script = "while(true) {}";
+        const result = runner.runTests(script, mockResponse, 100);
+        assert.equal(result.failures, 1);
+        assert.equal(result.results[0].name, 'Script Execution');
+        assert.ok(result.results[0].error);
+    });
+
+    it('sandbox tests object is shared with caller', () => {
+        const script = "tests['Set from sandbox'] = true;";
+        const result = runner.runTests(script, mockResponse, 100);
+        assert.equal(result.results[0].passed, true);
+        assert.equal(result.results[0].name, 'Set from sandbox');
+    });
+
+    it('sandbox has responseCode, responseBody, responseTime', () => {
+        const script = `
+            tests['Has responseCode'] = typeof responseCode === 'object';
+            tests['Has responseBody'] = typeof responseBody === 'object';
+            tests['Has responseTime'] = typeof responseTime === 'number';
+        `;
+        const result = runner.runTests(script, mockResponse, 42);
+        assert.equal(result.total, 3);
+        assert.equal(result.passed, 3);
+    });
+});
+
+// ===================== substituteVars: Object.hasOwn =====================
+
+describe('CollectionRunner: substituteVars with prototype keys', () => {
+    let runner;
+    before(() => { runner = new CollectionRunner(); });
+
+    it('does not substitute inherited prototype properties', () => {
+        const vars = Object.create({ inherited: 'BAD' });
+        vars.own = 'GOOD';
+        const result = runner.substituteVars('{{own}} {{inherited}}', vars);
+        assert.equal(result, 'GOOD {{inherited}}');
+    });
+
+    it('works with null-prototype objects', () => {
+        const vars = Object.create(null);
+        vars.key = 'value';
+        const result = runner.substituteVars('{{key}}', vars);
+        assert.equal(result, 'value');
+    });
+});
+
 // ===================== Integration: Runner + Reporters =====================
 
 describe('Integration: Runner results through reporters', () => {
