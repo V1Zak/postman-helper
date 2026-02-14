@@ -11,7 +11,7 @@ Request = class {
         this.name = name || 'New Request';
         this.method = method || 'GET';
         this.url = url || '';
-        this.headers = headers || [];
+        this.headers = headers || {};
         this.body = body || '';
         this.description = description || '';
         this.events = events || { prerequest: '', test: '' };
@@ -258,10 +258,16 @@ Collection = class {
                 },
                 response: []
             };
-            // Convert headers object to Postman header array
+            // Convert headers to Postman header array (handles both {} and [{key,value}])
             if (req.headers && typeof req.headers === 'object') {
-                for (const [key, value] of Object.entries(req.headers)) {
-                    item.request.header.push({ key, value, type: 'text' });
+                if (Array.isArray(req.headers)) {
+                    req.headers.forEach(h => {
+                        if (h.key) item.request.header.push({ key: h.key, value: h.value || '', type: 'text' });
+                    });
+                } else {
+                    for (const [key, value] of Object.entries(req.headers)) {
+                        item.request.header.push({ key, value, type: 'text' });
+                    }
                 }
             }
             // Add body if present
@@ -3376,12 +3382,17 @@ class PostmanHelperApp {
     }
 
     renderHeaders(headers) {
-        if (Object.keys(headers).length === 0) {
+        // Normalize headers: handle both object {} and array [{key, value}] formats
+        const entries = Array.isArray(headers)
+            ? headers.filter(h => h.key).map(h => [h.key, h.value || ''])
+            : Object.entries(headers || {});
+
+        if (entries.length === 0) {
             return '<div class="empty-state" style="padding: 20px;">No headers defined</div>';
         }
 
         let html = '';
-        for (const [key, value] of Object.entries(headers)) {
+        for (const [key, value] of entries) {
             html += `
                 <div class="header-row">
                     <input type="text" class="header-key" value="${key}" placeholder="Header Name">
@@ -6537,8 +6548,15 @@ class PostmanHelperApp {
         let url = this.substituteVariables(form.url);
         const body = this.substituteVariables(form.body);
         const headers = {};
-        for (const [k, v] of Object.entries(form.headers)) {
-            headers[this.substituteVariables(k)] = this.substituteVariables(v);
+        // Handle both object {} and array [{key, value}] header formats
+        if (Array.isArray(form.headers)) {
+            for (const h of form.headers) {
+                if (h.key) headers[this.substituteVariables(h.key)] = this.substituteVariables(h.value || '');
+            }
+        } else {
+            for (const [k, v] of Object.entries(form.headers || {})) {
+                headers[this.substituteVariables(k)] = this.substituteVariables(v);
+            }
         }
 
         // Warn about unresolved environment variables

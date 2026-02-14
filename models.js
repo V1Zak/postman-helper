@@ -387,7 +387,11 @@ class InheritanceManager {
     getBodyTemplates() { return this.bodyTemplates; }
     getTestTemplates() { return this.testTemplates; }
 
-    addGlobalHeader(header) {
+    addGlobalHeader(keyOrHeader, value) {
+        // Accept both addGlobalHeader({key, value}) and addGlobalHeader(key, value)
+        const header = (typeof keyOrHeader === 'string')
+            ? { key: keyOrHeader, value: value || '' }
+            : keyOrHeader;
         this.globalHeaders = this.globalHeaders.filter(h => h.key !== header.key);
         this.globalHeaders.push(header);
     }
