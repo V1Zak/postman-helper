@@ -1177,32 +1177,96 @@ ${bodyContent}
     }
 }
 
-// DiffUtil — simple line-by-line diff utility for version history
+// DiffUtil — Myers O(ND) diff for version history (#130)
 class DiffUtil {
     /**
-     * Compare two text strings line by line.
+     * Compare two text strings using Myers diff algorithm.
      * Returns array of { type: 'same'|'added'|'removed', line: string }
      */
     static diffLines(oldText, newText) {
-        const oldLines = (oldText || '').split('\n');
-        const newLines = (newText || '').split('\n');
-        const result = [];
-        const maxLen = Math.max(oldLines.length, newLines.length);
-        for (let i = 0; i < maxLen; i++) {
-            const oldLine = i < oldLines.length ? oldLines[i] : undefined;
-            const newLine = i < newLines.length ? newLines[i] : undefined;
-            if (oldLine === newLine) {
-                result.push({ type: 'same', line: oldLine });
-            } else if (oldLine === undefined) {
-                result.push({ type: 'added', line: newLine });
-            } else if (newLine === undefined) {
-                result.push({ type: 'removed', line: oldLine });
+        var a = (oldText || '').split('\n');
+        var b = (newText || '').split('\n');
+        var n = a.length;
+        var m = b.length;
+        var max = n + m;
+
+        // Shortcut: both empty or identical
+        if (n === 0 && m === 0) return [{ type: 'same', line: '' }];
+        if (oldText === newText) {
+            return a.map(function (line) { return { type: 'same', line: line }; });
+        }
+
+        // Myers shortest edit script (SES) — O(ND) algorithm
+        // v[k] = furthest-reaching x on diagonal k
+        var v = new Array(2 * max + 1);
+        v[max + 1] = 0; // v[1] in offset coordinates
+        var trace = [];
+
+        var found = false;
+        for (var d = 0; d <= max; d++) {
+            var vSnap = v.slice();
+            trace.push(vSnap);
+            for (var k = -d; k <= d; k += 2) {
+                var idx = k + max;
+                var x;
+                if (k === -d || (k !== d && v[idx - 1] < v[idx + 1])) {
+                    x = v[idx + 1];     // move down (insert from b)
+                } else {
+                    x = v[idx - 1] + 1; // move right (delete from a)
+                }
+                var y = x - k;
+                // Follow diagonal (matching lines)
+                while (x < n && y < m && a[x] === b[y]) {
+                    x++;
+                    y++;
+                }
+                v[idx] = x;
+                if (x >= n && y >= m) {
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+
+        // Backtrack to reconstruct the edit script
+        var edits = [];
+        var bx = n;
+        var by = m;
+        for (var d2 = trace.length - 1; d2 >= 0; d2--) {
+            var vPrev = trace[d2];
+            var k2 = bx - by;
+            var idx2 = k2 + max;
+            var prevK, prevX, prevY;
+            if (k2 === -d2 || (k2 !== d2 && vPrev[idx2 - 1] < vPrev[idx2 + 1])) {
+                prevK = k2 + 1;
             } else {
-                result.push({ type: 'removed', line: oldLine });
-                result.push({ type: 'added', line: newLine });
+                prevK = k2 - 1;
+            }
+            prevX = vPrev[prevK + max];
+            prevY = prevX - prevK;
+
+            // Diagonal (matching) moves
+            while (bx > prevX && by > prevY) {
+                bx--;
+                by--;
+                edits.push({ type: 'same', line: a[bx] });
+            }
+            if (d2 > 0) {
+                if (bx === prevX) {
+                    // Insert from b
+                    by--;
+                    edits.push({ type: 'added', line: b[by] });
+                } else {
+                    // Delete from a
+                    bx--;
+                    edits.push({ type: 'removed', line: a[bx] });
+                }
             }
         }
-        return result;
+
+        edits.reverse();
+        return edits;
     }
 
     /**

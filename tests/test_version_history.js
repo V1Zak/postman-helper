@@ -291,6 +291,40 @@ describe('DiffUtil.diffLines', () => {
         assert.ok(types.includes('removed'));
         assert.ok(types.includes('added'));
     });
+
+    it('produces minimal diff for inserted block (#130)', () => {
+        const old = 'a\nb\nc';
+        const _new = 'a\nx\ny\nb\nc';
+        const result = DiffUtil.diffLines(old, _new);
+        // Myers should find: a=same, x=added, y=added, b=same, c=same
+        assert.equal(result.filter(r => r.type === 'same').length, 3);
+        assert.equal(result.filter(r => r.type === 'added').length, 2);
+        assert.equal(result.filter(r => r.type === 'removed').length, 0);
+    });
+
+    it('produces minimal diff for deleted block (#130)', () => {
+        const old = 'a\nb\nc\nd\ne';
+        const _new = 'a\nd\ne';
+        const result = DiffUtil.diffLines(old, _new);
+        // Myers should find: a=same, b=removed, c=removed, d=same, e=same
+        assert.equal(result.filter(r => r.type === 'same').length, 3);
+        assert.equal(result.filter(r => r.type === 'removed').length, 2);
+        assert.equal(result.filter(r => r.type === 'added').length, 0);
+    });
+
+    it('detects moved lines correctly (#130)', () => {
+        const old = 'a\nb\nc\nd';
+        const _new = 'a\nc\nb\nd';
+        const result = DiffUtil.diffLines(old, _new);
+        // Myers detects the minimal edit to transform old -> new
+        // Common subsequence is a, c, d (or a, b, d) — length 3
+        // So we expect 3 same + some added/removed
+        const sameCount = result.filter(r => r.type === 'same').length;
+        assert.ok(sameCount >= 3, 'should find at least 3 matching lines');
+        // Total edits should be minimal (2 or fewer)
+        const editCount = result.filter(r => r.type !== 'same').length;
+        assert.ok(editCount <= 2, 'should have minimal edits for swap');
+    });
 });
 
 describe('DiffUtil.diffRequest', () => {
