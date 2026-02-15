@@ -2093,6 +2093,67 @@ class PluginManager {
         return { valid: errors.length === 0, errors };
     }
 
+    // Maximum allowed source size for a plugin (256 KB)
+    static MAX_PLUGIN_SOURCE_SIZE = 256 * 1024;
+
+    // Forbidden global names — plugins must not access these (#114)
+    // Note: 'eval' and 'arguments' cannot be used as parameter names in strict mode,
+    // so they are not shadowed as parameters. Instead, the wrapper uses strict mode
+    // which prevents 'eval' reassignment. For true isolation, use an iframe sandbox.
+    static FORBIDDEN_GLOBALS = [
+        'Function', 'XMLHttpRequest', 'fetch',
+        'localStorage', 'sessionStorage', 'indexedDB',
+        'document', 'window', 'globalThis', 'top', 'parent', 'opener',
+        'require', 'process', 'child_process', 'fs', '__dirname', '__filename',
+        'WebSocket', 'Worker', 'SharedWorker', 'ServiceWorker'
+    ];
+
+    /**
+     * Parse plugin source in a sandboxed scope (#114).
+     * Instead of `new Function(source)` which gives full global access,
+     * the plugin is compiled with forbidden globals masked as undefined
+     * and only receives the PluginAPI surface.
+     *
+     * @param {string} source — JavaScript source code of the plugin
+     * @param {object} manifest — parsed manifest.json (for validation)
+     * @returns {{ success: boolean, pluginModule?: object, error?: string }}
+     */
+    loadAndSandboxPlugin(source, manifest) {
+        try {
+            // Validate source
+            if (typeof source !== 'string' || source.length === 0) {
+                return { success: false, error: 'Empty or invalid plugin source' };
+            }
+            if (source.length > PluginManager.MAX_PLUGIN_SOURCE_SIZE) {
+                return { success: false, error: 'Plugin source exceeds size limit' };
+            }
+
+            // Build a list of params that shadow forbidden globals with undefined
+            var forbiddenParams = PluginManager.FORBIDDEN_GLOBALS.join(', ');
+
+            // Compile the plugin in a scope where dangerous globals are shadowed.
+            // The module pattern: (function(exports, module, <forbidden>){ ... })
+            // The plugin should set module.exports = { activate, deactivate, hookName, ... }
+            var moduleObj = { exports: {} };
+            var wrapper = '(function(module, exports, ' + forbiddenParams + ') {\n"use strict";\n' +
+                source + '\n})';
+
+            // Use indirect eval to avoid strict-mode caller leaks.
+            // This is safer than new Function() because we shadow all dangerous globals.
+            var compiled = (0, eval)(wrapper);
+            compiled(moduleObj, moduleObj.exports);
+
+            var pluginModule = moduleObj.exports;
+            if (!pluginModule || typeof pluginModule !== 'object') {
+                return { success: false, error: 'Plugin did not export an object' };
+            }
+
+            return { success: true, pluginModule: pluginModule };
+        } catch (err) {
+            return { success: false, error: 'Plugin compilation failed: ' + err.message };
+        }
+    }
+
     /**
      * Register a plugin from its manifest and module object.
      * @param {object} manifest — parsed manifest.json

@@ -843,3 +843,103 @@ describe('Integration: Multiple plugins with shared hooks', () => {
         assert.equal(called, false);
     });
 });
+
+// ===================== Plugin Sandbox (#114) =====================
+
+describe('PluginManager: loadAndSandboxPlugin', () => {
+    it('loads valid plugin source', () => {
+        const pm = new PluginManager(null);
+        const src = 'module.exports = { activate: function(api) {}, deactivate: function() {} };';
+        const result = pm.loadAndSandboxPlugin(src, { name: 'test', version: '1.0.0', main: 'main.js' });
+        assert.ok(result.success);
+        assert.equal(typeof result.pluginModule.activate, 'function');
+        assert.equal(typeof result.pluginModule.deactivate, 'function');
+    });
+
+    it('rejects empty source', () => {
+        const pm = new PluginManager(null);
+        const result = pm.loadAndSandboxPlugin('', {});
+        assert.equal(result.success, false);
+        assert.ok(result.error.includes('Empty'));
+    });
+
+    it('rejects non-string source', () => {
+        const pm = new PluginManager(null);
+        const result = pm.loadAndSandboxPlugin(42, {});
+        assert.equal(result.success, false);
+    });
+
+    it('rejects source exceeding size limit', () => {
+        const pm = new PluginManager(null);
+        const bigSource = 'x'.repeat(PluginManager.MAX_PLUGIN_SOURCE_SIZE + 1);
+        const result = pm.loadAndSandboxPlugin(bigSource, {});
+        assert.equal(result.success, false);
+        assert.ok(result.error.includes('size limit'));
+    });
+
+    it('shadows dangerous globals in plugin scope', () => {
+        const pm = new PluginManager(null);
+        const src = `
+            var results = {};
+            var results = {};
+            try { results.hasDocument = typeof document; } catch(e) { results.hasDocument = 'error'; }
+            try { results.hasWindow = typeof window; } catch(e) { results.hasWindow = 'error'; }
+            try { results.hasLocalStorage = typeof localStorage; } catch(e) { results.hasLocalStorage = 'error'; }
+            try { results.hasFetch = typeof fetch; } catch(e) { results.hasFetch = 'error'; }
+            try { results.hasRequire = typeof require; } catch(e) { results.hasRequire = 'error'; }
+            try { results.hasProcess = typeof process; } catch(e) { results.hasProcess = 'error'; }
+            module.exports = { results: results };
+        `;
+        const result = pm.loadAndSandboxPlugin(src, { name: 'test', version: '1.0.0', main: 'main.js' });
+        assert.ok(result.success, 'plugin should load');
+        const r = result.pluginModule.results;
+        assert.equal(r.hasDocument, 'undefined', 'document should be shadowed');
+        assert.equal(r.hasWindow, 'undefined', 'window should be shadowed');
+        assert.equal(r.hasLocalStorage, 'undefined', 'localStorage should be shadowed');
+        assert.equal(r.hasFetch, 'undefined', 'fetch should be shadowed');
+        assert.equal(r.hasRequire, 'undefined', 'require should be shadowed');
+        assert.equal(r.hasProcess, 'undefined', 'process should be shadowed');
+    });
+
+    it('handles syntax errors gracefully', () => {
+        const pm = new PluginManager(null);
+        const result = pm.loadAndSandboxPlugin('this is not valid javascript {{{', {});
+        assert.equal(result.success, false);
+        assert.ok(result.error.includes('compilation failed'));
+    });
+
+    it('handles runtime errors gracefully', () => {
+        const pm = new PluginManager(null);
+        const result = pm.loadAndSandboxPlugin('throw new Error("boom");', {});
+        assert.equal(result.success, false);
+        assert.ok(result.error.includes('boom'));
+    });
+
+    it('plugin can export hook handlers', () => {
+        const pm = new PluginManager(null);
+        const src = `
+            module.exports = {
+                activate: function(api) { api.log('activated'); },
+                onAppReady: function(data) { return data; }
+            };
+        `;
+        const result = pm.loadAndSandboxPlugin(src, { name: 'hook-test', version: '1.0.0', main: 'main.js' });
+        assert.ok(result.success);
+        assert.equal(typeof result.pluginModule.onAppReady, 'function');
+    });
+
+    it('has FORBIDDEN_GLOBALS static list', () => {
+        assert.ok(Array.isArray(PluginManager.FORBIDDEN_GLOBALS));
+        assert.ok(PluginManager.FORBIDDEN_GLOBALS.includes('document'));
+        assert.ok(PluginManager.FORBIDDEN_GLOBALS.includes('window'));
+        assert.ok(PluginManager.FORBIDDEN_GLOBALS.includes('localStorage'));
+        assert.ok(PluginManager.FORBIDDEN_GLOBALS.includes('fetch'));
+        assert.ok(PluginManager.FORBIDDEN_GLOBALS.includes('require'));
+        assert.ok(PluginManager.FORBIDDEN_GLOBALS.includes('Function'));
+    });
+
+    it('has MAX_PLUGIN_SOURCE_SIZE static constant', () => {
+        assert.equal(typeof PluginManager.MAX_PLUGIN_SOURCE_SIZE, 'number');
+        assert.ok(PluginManager.MAX_PLUGIN_SOURCE_SIZE > 0);
+    });
+});
