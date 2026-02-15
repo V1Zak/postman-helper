@@ -332,9 +332,9 @@ describe('app.js: innerHTML escaping audit', () => {
     });
 
     it('collection tree escapes request data-id and data-uuid', () => {
-        // Both updateCollectionTree and renderCollapsibleFolder should escape
-        assert.ok(src.includes('data-id="${this.escapeHtml(request.name)}"'),
-            'request data-id should use escapeHtml');
+        // data-id now carries uuid (#125), both should be escaped
+        assert.ok(src.includes('data-id="${this.escapeHtml(request.uuid'),
+            'request data-id should use escapeHtml on uuid');
         assert.ok(src.includes('data-uuid="${this.escapeHtml(request.uuid'),
             'request data-uuid should use escapeHtml');
     });
