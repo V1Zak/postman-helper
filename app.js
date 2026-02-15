@@ -123,6 +123,7 @@ Collection = class {
                         req.description || '',
                         req.events || {}
                     );
+                    if (req.uuid) request.uuid = req.uuid; // preserve uuid on import (#125)
                     return request;
                 });
             }
@@ -131,9 +132,10 @@ Collection = class {
             if (dataObj.folders && Array.isArray(dataObj.folders)) {
                 this.folders = dataObj.folders.map(folderData => {
                     const folder = new Folder(folderData.name || 'Unnamed Folder');
+                    if (folderData.uuid) folder.uuid = folderData.uuid; // preserve uuid on import (#125)
                     if (folderData.requests) {
                         folder.requests = folderData.requests.map(req => {
-                            return new Request(
+                            const request = new Request(
                                 req.name || 'Unnamed Request',
                                 req.method || 'GET',
                                 req.url || '',
@@ -142,6 +144,8 @@ Collection = class {
                                 req.description || '',
                                 req.events || {}
                             );
+                            if (req.uuid) request.uuid = req.uuid; // preserve uuid on import (#125)
+                            return request;
                         });
                     }
                     return folder;
@@ -354,6 +358,7 @@ Collection = class {
 Folder = class {
     constructor(name) {
         this.name = name || 'New Folder';
+        this.uuid = generateUUID();
         this.requests = [];
         this.folders = [];
     }
@@ -2486,12 +2491,18 @@ function sanitizeAutoSaveData(raw) {
         }
     }
 
-    // currentRequestName / currentFolderName — must be strings
+    // currentRequestName / currentFolderName / uuid variants — must be strings
     if (data.currentRequestName !== undefined && typeof data.currentRequestName !== 'string') {
         delete data.currentRequestName;
     }
+    if (data.currentRequestUuid !== undefined && typeof data.currentRequestUuid !== 'string') {
+        delete data.currentRequestUuid;
+    }
     if (data.currentFolderName !== undefined && typeof data.currentFolderName !== 'string') {
         delete data.currentFolderName;
+    }
+    if (data.currentFolderUuid !== undefined && typeof data.currentFolderUuid !== 'string') {
+        delete data.currentFolderUuid;
     }
 
     // analytics — must be a plain object
@@ -4069,7 +4080,7 @@ class PostmanHelperApp {
                             ? this.highlightMatch(request.name, f.text, f.useRegex)
                             : this.escapeHtml(request.name);
                         const dirtyDot = this.state.isRequestDirty(request.uuid) ? '<span class="dirty-indicator" aria-label="unsaved changes">\u25CF</span>' : '';
-                        html += `<div class="tree-item ${reqActive}" data-type="request" data-id="${this.escapeHtml(request.name)}" data-uuid="${this.escapeHtml(request.uuid || '')}" data-collection-index="${index}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
+                        html += `<div class="tree-item ${reqActive}" data-type="request" data-id="${this.escapeHtml(request.uuid || '')}" data-uuid="${this.escapeHtml(request.uuid || '')}" data-collection-index="${index}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
                     }
                 }
             }
@@ -4117,18 +4128,19 @@ class PostmanHelperApp {
     }
 
     renderCollapsibleFolder(folder, depth = 0) {
-        const folderId = `folder-${folder.name.replace(/\s+/g, '-')}-${depth}`;
+        const folderId = `folder-${folder.uuid || folder.name.replace(/\s+/g, '-')}-${depth}`;
         const isFolderActive = this.state.currentFolder === folder;
         const activeClass = isFolderActive ? 'active' : '';
         const folderExpanded = this._expandedFolders.has(folderId);
 
         const eFolderName = this.escapeHtml(folder.name);
+        const eFolderUuid = this.escapeHtml(folder.uuid || '');
         let html = `
-            <div class="tree-item folder ${activeClass}" data-type="folder" data-id="${eFolderName}" data-drop-target="folder" draggable="true" style="padding-left: ${12 + depth * 15}px" role="treeitem" aria-expanded="${folderExpanded}" aria-selected="${isFolderActive}" tabindex="-1">
+            <div class="tree-item folder ${activeClass}" data-type="folder" data-id="${eFolderUuid}" data-drop-target="folder" draggable="true" style="padding-left: ${12 + depth * 15}px" role="treeitem" aria-expanded="${folderExpanded}" aria-selected="${isFolderActive}" tabindex="-1">
                 <span class="tree-toggle" data-target="${folderId}" aria-hidden="true">\u25B6</span>
                 <span class="tree-label"><span aria-hidden="true">\uD83D\uDCC1</span> ${eFolderName}</span>
             </div>
-            <div id="${folderId}" class="tree-children" role="group" data-drop-target="folder" data-id="${eFolderName}" style="padding-left: ${24 + depth * 15}px">
+            <div id="${folderId}" class="tree-children" role="group" data-drop-target="folder" data-id="${eFolderUuid}" style="padding-left: ${24 + depth * 15}px">
         `;
 
         // Add folder contents (filtered)
@@ -4145,7 +4157,7 @@ class PostmanHelperApp {
                     ? this.highlightMatch(request.name, f.text, f.useRegex)
                     : this.escapeHtml(request.name);
                 const dirtyDot = this.state.isRequestDirty(request.uuid) ? '<span class="dirty-indicator" aria-label="unsaved changes">\u25CF</span>' : '';
-                html += `<div class="tree-item ${requestActive}" data-type="request" data-id="${this.escapeHtml(request.name)}" data-uuid="${this.escapeHtml(request.uuid || '')}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
+                html += `<div class="tree-item ${requestActive}" data-type="request" data-id="${this.escapeHtml(request.uuid || '')}" data-uuid="${this.escapeHtml(request.uuid || '')}" draggable="true" role="treeitem" aria-selected="${isReqActive}" tabindex="-1"><span class="method-badge method-${(request.method || 'GET').toLowerCase()}">${(request.method || 'GET')}</span>${dirtyDot}<span class="request-name">${displayName}</span></div>`;
             }
         }
 
@@ -4286,22 +4298,8 @@ class PostmanHelperApp {
                     }
                 }
 
-                const requestName = requestItem.dataset.id;
-                let request = this.state.currentCollection.requests.find(r => r.name === requestName);
-
-                // Also check in folders
-                if (!request) {
-                    const findInFolders = (folders) => {
-                        for (const folder of folders) {
-                            const found = folder.requests.find(r => r.name === requestName);
-                            if (found) return found;
-                            const subFound = findInFolders(folder.folders || []);
-                            if (subFound) return subFound;
-                        }
-                        return null;
-                    };
-                    request = findInFolders(this.state.currentCollection.folders || []);
-                }
+                const requestUuid = requestItem.dataset.id; // uuid since #125
+                let request = this.findRequestByUuid(requestUuid);
 
                 if (request) {
                     const current = this.state.currentRequest;
@@ -4333,8 +4331,8 @@ class PostmanHelperApp {
             // --- Folder click ---
             const folderItem = e.target.closest('.tree-item[data-type="folder"]');
             if (folderItem) {
-                const folderName = folderItem.dataset.id;
-                const folder = this.findFolderByName(this.state.currentCollection.folders, folderName);
+                const folderUuid = folderItem.dataset.id; // uuid since #125
+                const folder = this.findFolderByUuid(this.state.currentCollection.folders, folderUuid);
                 if (folder) {
                     this.state.setCurrentFolder(folder);
                     this.state.setCurrentRequest(null);
@@ -5680,11 +5678,12 @@ class PostmanHelperApp {
     }
 
     // Drag and Drop - find request location in collection tree
-    findRequestLocation(requestName) {
-        if (!this.state.currentCollection) return null;
+    // Find a request's location (container array + index) by uuid (#125)
+    findRequestLocation(requestUuid) {
+        if (!this.state.currentCollection || !requestUuid) return null;
 
         // Check root requests
-        const rootIdx = this.state.currentCollection.requests.findIndex(r => r.name === requestName);
+        const rootIdx = this.state.currentCollection.requests.findIndex(r => r.uuid === requestUuid);
         if (rootIdx !== -1) {
             return {
                 item: this.state.currentCollection.requests[rootIdx],
@@ -5697,7 +5696,7 @@ class PostmanHelperApp {
         // Recursively check folders
         const searchFolders = (folders) => {
             for (const folder of folders) {
-                const idx = folder.requests.findIndex(r => r.name === requestName);
+                const idx = folder.requests.findIndex(r => r.uuid === requestUuid);
                 if (idx !== -1) {
                     return {
                         item: folder.requests[idx],
@@ -5717,12 +5716,12 @@ class PostmanHelperApp {
         return searchFolders(this.state.currentCollection.folders || []);
     }
 
-    // Drag and Drop - find folder location in collection tree
-    findFolderLocation(folderName) {
-        if (!this.state.currentCollection) return null;
+    // Drag and Drop - find folder location by uuid (#125)
+    findFolderLocation(folderUuid) {
+        if (!this.state.currentCollection || !folderUuid) return null;
 
         // Check root folders
-        const rootIdx = this.state.currentCollection.folders.findIndex(f => f.name === folderName);
+        const rootIdx = this.state.currentCollection.folders.findIndex(f => f.uuid === folderUuid);
         if (rootIdx !== -1) {
             return {
                 item: this.state.currentCollection.folders[rootIdx],
@@ -5736,7 +5735,7 @@ class PostmanHelperApp {
         const searchFolders = (parentFolders) => {
             for (const parent of parentFolders) {
                 if (!parent.folders) continue;
-                const idx = parent.folders.findIndex(f => f.name === folderName);
+                const idx = parent.folders.findIndex(f => f.uuid === folderUuid);
                 if (idx !== -1) {
                     return {
                         item: parent.folders[idx],
@@ -5754,12 +5753,12 @@ class PostmanHelperApp {
         return searchFolders(this.state.currentCollection.folders || []);
     }
 
-    // Check if targetFolder is a descendant of sourceFolder
-    isFolderDescendant(sourceFolder, targetFolderName) {
+    // Check if targetFolder is a descendant of sourceFolder (uuid-based, #125)
+    isFolderDescendant(sourceFolder, targetFolderUuid) {
         if (!sourceFolder.folders) return false;
         for (const sub of sourceFolder.folders) {
-            if (sub.name === targetFolderName) return true;
-            if (this.isFolderDescendant(sub, targetFolderName)) return true;
+            if (sub.uuid === targetFolderUuid) return true;
+            if (this.isFolderDescendant(sub, targetFolderUuid)) return true;
         }
         return false;
     }
@@ -5781,8 +5780,8 @@ class PostmanHelperApp {
             if (!item) return;
 
             const dragType = item.dataset.type; // 'request' or 'folder'
-            const dragName = item.dataset.id;
-            e.dataTransfer.setData('application/json', JSON.stringify({ type: dragType, name: dragName }));
+            const dragUuid = item.dataset.id; // uuid since #125
+            e.dataTransfer.setData('application/json', JSON.stringify({ type: dragType, uuid: dragUuid }));
             e.dataTransfer.effectAllowed = 'move';
             item.classList.add('dragging');
         });
@@ -5832,23 +5831,23 @@ class PostmanHelperApp {
             const dropType = dropTarget.dataset.dropTarget; // 'folder' or 'collection'
 
             if (dragData.type === 'request') {
-                this.handleRequestDrop(dragData.name, dropTarget, dropType);
+                this.handleRequestDrop(dragData.uuid, dropTarget, dropType);
             } else if (dragData.type === 'folder') {
-                this.handleFolderDrop(dragData.name, dropTarget, dropType);
+                this.handleFolderDrop(dragData.uuid, dropTarget, dropType);
             }
         });
     }
 
-    handleRequestDrop(requestName, dropTarget, dropType) {
-        const source = this.findRequestLocation(requestName);
+    handleRequestDrop(requestUuid, dropTarget, dropType) {
+        const source = this.findRequestLocation(requestUuid);
         if (!source) return;
 
         let targetContainer;
         if (dropType === 'collection') {
             targetContainer = this.state.currentCollection.requests;
         } else if (dropType === 'folder') {
-            const folderName = dropTarget.dataset.id;
-            const folder = this.findFolderByName(this.state.currentCollection.folders, folderName);
+            const folderUuid = dropTarget.dataset.id;
+            const folder = this.findFolderByUuid(this.state.currentCollection.folders, folderUuid);
             if (folder) targetContainer = folder.requests;
         }
 
@@ -5859,11 +5858,11 @@ class PostmanHelperApp {
 
         this.state.markAsChanged();
         this.updateCollectionTree();
-        this.showToast(`Moved "${requestName}"`);
+        this.showToast(`Moved "${source.item.name}"`);
     }
 
-    handleFolderDrop(folderName, dropTarget, dropType) {
-        const source = this.findFolderLocation(folderName);
+    handleFolderDrop(folderUuid, dropTarget, dropType) {
+        const source = this.findFolderLocation(folderUuid);
         if (!source) return;
 
         let targetContainer;
@@ -5871,13 +5870,13 @@ class PostmanHelperApp {
             // Move folder to root level
             targetContainer = this.state.currentCollection.folders;
         } else if (dropType === 'folder') {
-            const targetFolderName = dropTarget.dataset.id;
+            const targetFolderUuid = dropTarget.dataset.id;
             // Don't drop folder into itself
-            if (targetFolderName === folderName) return;
+            if (targetFolderUuid === folderUuid) return;
             // Don't drop folder into its own descendant
-            if (this.isFolderDescendant(source.item, targetFolderName)) return;
+            if (this.isFolderDescendant(source.item, targetFolderUuid)) return;
 
-            const targetFolder = this.findFolderByName(this.state.currentCollection.folders, targetFolderName);
+            const targetFolder = this.findFolderByUuid(this.state.currentCollection.folders, targetFolderUuid);
             if (targetFolder) {
                 if (!targetFolder.folders) targetFolder.folders = [];
                 targetContainer = targetFolder.folders;
@@ -5891,7 +5890,7 @@ class PostmanHelperApp {
 
         this.state.markAsChanged();
         this.updateCollectionTree();
-        this.showToast(`Moved folder "${folderName}"`);
+        this.showToast(`Moved folder "${source.item.name}"`);
     }
 
     // ===== Feature 1: Context Menus =====
@@ -5912,7 +5911,7 @@ class PostmanHelperApp {
             let items = [];
 
             if (type === 'request') {
-                const request = this.findRequestByName(id);
+                const request = this.findRequestByUuid(id);
                 if (!request) return;
                 items = [
                     { label: 'Rename', action: () => this.renameRequest(request) },
@@ -5923,7 +5922,7 @@ class PostmanHelperApp {
                     { label: 'Delete', danger: true, action: () => this.deleteRequestDirect(request) }
                 ];
             } else if (type === 'folder') {
-                const folder = this.findFolderByName(this.state.currentCollection.folders, id);
+                const folder = this.findFolderByUuid(this.state.currentCollection.folders, id);
                 if (!folder) return;
                 items = [
                     { label: 'Rename', action: () => this.renameFolder(folder) },
@@ -6052,6 +6051,35 @@ class PostmanHelperApp {
         return searchFolders(this.state.currentCollection.folders || []);
     }
 
+    // UUID-based lookups — unambiguous even with duplicate names (#125)
+    findRequestByUuid(uuid) {
+        if (!this.state.currentCollection || !uuid) return null;
+        const fromRoot = this.state.currentCollection.requests.find(r => r.uuid === uuid);
+        if (fromRoot) return fromRoot;
+        const searchFolders = (folders) => {
+            for (const folder of folders) {
+                const found = folder.requests.find(r => r.uuid === uuid);
+                if (found) return found;
+                if (folder.folders) {
+                    const sub = searchFolders(folder.folders);
+                    if (sub) return sub;
+                }
+            }
+            return null;
+        };
+        return searchFolders(this.state.currentCollection.folders || []);
+    }
+
+    findFolderByUuid(folders, uuid) {
+        if (!uuid) return null;
+        for (const folder of folders) {
+            if (folder.uuid === uuid) return folder;
+            const found = this.findFolderByUuid(folder.folders || [], uuid);
+            if (found) return found;
+        }
+        return null;
+    }
+
     renameRequest(request) {
         DialogSystem.showPrompt('Rename request:', request.name, (newName) => {
             if (newName && newName !== request.name) {
@@ -6135,8 +6163,8 @@ class PostmanHelperApp {
                     request.description,
                     { prerequest: '', test: request.tests || '' }
                 );
-                // Add to same container as original
-                const loc = this.findRequestLocation(request.name);
+                // Add to same container as original (uuid-based lookup, #125)
+                const loc = this.findRequestLocation(request.uuid);
                 if (loc) {
                     loc.container.push(dup);
                 } else {
@@ -6190,8 +6218,8 @@ class PostmanHelperApp {
 
         DialogSystem.showPrompt('Move to folder (type name, or "(Root)" for root):', '(Root)', (target) => {
             if (target === null) return;
-            // Remove from current location
-            const loc = this.findRequestLocation(request.name);
+            // Remove from current location (uuid-based lookup, #125)
+            const loc = this.findRequestLocation(request.uuid);
             if (!loc) return;
             loc.container.splice(loc.index, 1);
 
@@ -7374,7 +7402,9 @@ class PostmanHelperApp {
                 collections: this.state.collections.map(c => c.toPostmanJSON()),
                 activeCollectionIndex: this.state.collections.indexOf(this.state.currentCollection),
                 currentRequestName: this.state.currentRequest ? this.state.currentRequest.name : null,
+                currentRequestUuid: this.state.currentRequest ? this.state.currentRequest.uuid : null,
                 currentFolderName: this.state.currentFolder ? this.state.currentFolder.name : null,
+                currentFolderUuid: this.state.currentFolder ? this.state.currentFolder.uuid : null,
                 environments: this.state.environments,
                 activeEnvironment: this.state.activeEnvironment,
                 inheritance: this.state.inheritanceManager.toJSON ? this.state.inheritanceManager.toJSON() : null,
@@ -7513,16 +7543,18 @@ class PostmanHelperApp {
             if (this.state.currentCollection) {
                 this.updateCollectionTree();
 
-                // Restore current request selection
-                if (data.currentRequestName) {
-                    const req = this.findRequestByName(data.currentRequestName);
+                // Restore current request selection (prefer uuid, fall back to name, #125)
+                if (data.currentRequestUuid || data.currentRequestName) {
+                    const req = (data.currentRequestUuid && this.findRequestByUuid(data.currentRequestUuid))
+                        || this.findRequestByName(data.currentRequestName);
                     if (req) {
                         this.state.setCurrentRequest(req);
                         this.switchTab('request');
                     }
                 }
-                if (data.currentFolderName) {
-                    const folder = this.findFolderByName(this.state.currentCollection.folders, data.currentFolderName);
+                if (data.currentFolderUuid || data.currentFolderName) {
+                    const folder = (data.currentFolderUuid && this.findFolderByUuid(this.state.currentCollection.folders, data.currentFolderUuid))
+                        || this.findFolderByName(this.state.currentCollection.folders, data.currentFolderName);
                     if (folder) this.state.setCurrentFolder(folder);
                 }
             }
