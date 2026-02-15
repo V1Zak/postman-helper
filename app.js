@@ -4097,7 +4097,24 @@ class PostmanHelperApp {
         });
     }
 
+    // Debounced wrapper: coalesces multiple updateCollectionTree calls within the
+    // same animation frame into a single re-render (#129).
     updateCollectionTree() {
+        if (this._treeUpdateScheduled) return;
+        this._treeUpdateScheduled = true;
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => {
+                this._treeUpdateScheduled = false;
+                this._updateCollectionTreeImmediate();
+            });
+        } else {
+            // Fallback for environments without rAF (tests, Node)
+            this._treeUpdateScheduled = false;
+            this._updateCollectionTreeImmediate();
+        }
+    }
+
+    _updateCollectionTreeImmediate() {
         const collectionTree = document.getElementById('collectionTree');
 
         // Save scroll position before re-render
