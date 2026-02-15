@@ -222,6 +222,59 @@
         </div>
     </div>
 
+    <!-- AI Assistant FAB + Panel -->
+    <button id="aiAssistantFab" class="ai-fab" title="AI Assistant" aria-label="Open AI Assistant">
+        <svg class="ai-fab-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L14.09 8.26L20 9.27L15.55 13.97L16.91 20L12 16.9L7.09 20L8.45 13.97L4 9.27L9.91 8.26L12 2Z"/>
+        </svg>
+        <span class="ai-fab-label">AI</span>
+    </button>
+
+    <div id="aiPanel" class="ai-panel" style="display:none;">
+        <div class="ai-panel-header">
+            <div class="ai-panel-title">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L14.09 8.26L20 9.27L15.55 13.97L16.91 20L12 16.9L7.09 20L8.45 13.97L4 9.27L9.91 8.26L12 2Z"/></svg>
+                AI Assistant
+            </div>
+            <div class="ai-panel-actions">
+                <button id="aiPanelClearBtn" class="ai-panel-btn" title="Clear chat">Clear</button>
+                <button id="aiPanelCloseBtn" class="ai-panel-btn" title="Close" aria-label="Close AI panel">&times;</button>
+            </div>
+        </div>
+        <div id="aiQuickActions" class="ai-quick-actions">
+            <button class="ai-action-btn" data-action="headers" title="Suggest headers for current request">
+                <span class="ai-action-icon">H</span> Suggest Headers
+            </button>
+            <button class="ai-action-btn" data-action="body" title="Generate sample request body">
+                <span class="ai-action-icon">{}</span> Generate Body
+            </button>
+            <button class="ai-action-btn" data-action="tests" title="Generate test scripts">
+                <span class="ai-action-icon">T</span> Generate Tests
+            </button>
+            <button class="ai-action-btn" data-action="url" title="Suggest URL completions">
+                <span class="ai-action-icon">/</span> Complete URL
+            </button>
+            <button class="ai-action-btn ai-action-error" data-action="error" title="Analyze last response error" style="display:none;">
+                <span class="ai-action-icon">!</span> Analyze Response
+            </button>
+        </div>
+        <div id="aiMessages" class="ai-messages">
+            <div class="ai-welcome-msg">
+                <p>Ask me anything about your API requests, or use the quick actions above.</p>
+            </div>
+        </div>
+        <div class="ai-input-area">
+            <textarea id="aiChatInput" class="ai-chat-input" placeholder="Ask about your API request..." rows="1"></textarea>
+            <button id="aiSendBtn" class="ai-send-btn" title="Send message" aria-label="Send">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </button>
+        </div>
+        <div id="aiNotConfigured" class="ai-not-configured" style="display:none;">
+            <p>AI is not configured. Open <strong>Settings</strong> to add your API key.</p>
+            <button id="aiOpenSettingsBtn" class="secondary" style="font-size:12px;padding:4px 12px;">Open Settings</button>
+        </div>
+    </div>
+
     <div class="status-bar" role="status" aria-live="polite" aria-label="Application status">
         <div>Postman Helper v1.98 | Ready</div>
         <div id="statusInfo" aria-live="polite">No collection loaded</div>
