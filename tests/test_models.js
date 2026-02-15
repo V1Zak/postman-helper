@@ -362,3 +362,108 @@ describe('InheritanceManager', () => {
         assert.equal(restored.rules.length, 1);
     });
 });
+
+// Polymorphic API tests (#120)
+describe('InheritanceManager: polymorphic API', () => {
+    it('addGlobalHeader accepts two string args', () => {
+        const mgr = new InheritanceManager();
+        mgr.addGlobalHeader('Authorization', 'Bearer token');
+        assert.equal(mgr.getGlobalHeaders().length, 1);
+        assert.equal(mgr.getGlobalHeaders()[0].key, 'Authorization');
+        assert.equal(mgr.getGlobalHeaders()[0].value, 'Bearer token');
+    });
+
+    it('addBodyTemplate accepts two string args', () => {
+        const mgr = new InheritanceManager();
+        mgr.addBodyTemplate('JSON Body', '{"key": "value"}');
+        assert.equal(mgr.getBodyTemplates().length, 1);
+        assert.equal(mgr.getBodyTemplates()[0].name, 'JSON Body');
+        assert.equal(mgr.getBodyTemplates()[0].content, '{"key": "value"}');
+    });
+
+    it('addBodyTemplate accepts object arg', () => {
+        const mgr = new InheritanceManager();
+        mgr.addBodyTemplate({ name: 'XML', content: '<root/>' });
+        assert.equal(mgr.getBodyTemplates()[0].name, 'XML');
+    });
+
+    it('addTestTemplate accepts two string args', () => {
+        const mgr = new InheritanceManager();
+        mgr.addTestTemplate('Status Check', 'assert(200)');
+        assert.equal(mgr.getTestTemplates().length, 1);
+        assert.equal(mgr.getTestTemplates()[0].name, 'Status Check');
+    });
+
+    it('removeGlobalHeader by key string', () => {
+        const mgr = new InheritanceManager();
+        mgr.addGlobalHeader('Authorization', 'Bearer x');
+        mgr.addGlobalHeader('Accept', 'json');
+        mgr.removeGlobalHeader('Authorization');
+        assert.equal(mgr.getGlobalHeaders().length, 1);
+        assert.equal(mgr.getGlobalHeaders()[0].key, 'Accept');
+    });
+
+    it('removeGlobalHeader by index still works', () => {
+        const mgr = new InheritanceManager();
+        mgr.addGlobalHeader('A', '1');
+        mgr.addGlobalHeader('B', '2');
+        mgr.removeGlobalHeader(0);
+        assert.equal(mgr.getGlobalHeaders().length, 1);
+        assert.equal(mgr.getGlobalHeaders()[0].key, 'B');
+    });
+
+    it('removeBaseEndpoint by value string', () => {
+        const mgr = new InheritanceManager();
+        mgr.addBaseEndpoint('https://api.example.com');
+        mgr.addBaseEndpoint('https://other.com');
+        mgr.removeBaseEndpoint('https://api.example.com');
+        assert.equal(mgr.getBaseEndpoints().length, 1);
+        assert.equal(mgr.getBaseEndpoints()[0], 'https://other.com');
+    });
+
+    it('removeBodyTemplate by name string', () => {
+        const mgr = new InheritanceManager();
+        mgr.addBodyTemplate('JSON', '{}');
+        mgr.addBodyTemplate('XML', '</>');
+        mgr.removeBodyTemplate('JSON');
+        assert.equal(mgr.getBodyTemplates().length, 1);
+        assert.equal(mgr.getBodyTemplates()[0].name, 'XML');
+    });
+
+    it('removeTestTemplate by name string', () => {
+        const mgr = new InheritanceManager();
+        mgr.addTestTemplate('Test1', 'code1');
+        mgr.addTestTemplate('Test2', 'code2');
+        mgr.removeTestTemplate('Test1');
+        assert.equal(mgr.getTestTemplates().length, 1);
+        assert.equal(mgr.getTestTemplates()[0].name, 'Test2');
+    });
+
+    it('setGlobalHeaders replaces all headers', () => {
+        const mgr = new InheritanceManager();
+        mgr.addGlobalHeader('Old', 'value');
+        mgr.setGlobalHeaders([{ key: 'New', value: 'v' }]);
+        assert.equal(mgr.getGlobalHeaders().length, 1);
+        assert.equal(mgr.getGlobalHeaders()[0].key, 'New');
+    });
+
+    it('processRequest returns shallow clone', () => {
+        const mgr = new InheritanceManager();
+        const req = { name: 'Test', url: '/api' };
+        const result = mgr.processRequest(req);
+        assert.deepEqual(result, req);
+        assert.notEqual(result, req); // different object reference
+    });
+});
+
+describe('Collection: description property (#120)', () => {
+    it('has description property', () => {
+        const col = new Collection('Test', 'A description');
+        assert.equal(col.description, 'A description');
+    });
+
+    it('defaults description to empty string', () => {
+        const col = new Collection('Test');
+        assert.equal(col.description, '');
+    });
+});

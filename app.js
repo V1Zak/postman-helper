@@ -81,6 +81,7 @@ Collection = class {
     constructor(name, description) {
         this.name = name || 'New Collection';
         this.description = description || '';
+        this.uuid = generateUUID();
         this.requests = [];
         this.folders = [];
     }
