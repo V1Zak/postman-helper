@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   aiGenerateTests: (data) => ipcRenderer.invoke('ai-generate-tests', data),
   aiAnalyzeError: (data) => ipcRenderer.invoke('ai-analyze-error', data),
   aiSuggestUrl: (data) => ipcRenderer.invoke('ai-suggest-url', data),
+  aiChat: (data) => ipcRenderer.invoke('ai-chat', data),
 
   // AI configuration
   aiUpdateConfig: (config) => ipcRenderer.invoke('ai-update-config', config),
