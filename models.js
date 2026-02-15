@@ -155,8 +155,9 @@ class PostmanRequest {
 }
 
 class Collection {
-    constructor(name) {
+    constructor(name, description) {
         this.name = name || 'New Collection';
+        this.description = description || '';
         this.folders = [];
         this.requests = [];
         this.uuid = generateUUID();
@@ -385,36 +386,74 @@ class InheritanceManager {
         this.baseEndpoints.push(endpoint);
     }
 
-    addBodyTemplate(template) {
+    // Polymorphic: addBodyTemplate({name, content}) or addBodyTemplate(name, content)
+    addBodyTemplate(nameOrTemplate, content) {
+        const template = (typeof nameOrTemplate === 'string')
+            ? { name: nameOrTemplate, content: content || '' }
+            : nameOrTemplate;
         this.bodyTemplates.push(template);
     }
 
-    addTestTemplate(template) {
+    // Polymorphic: addTestTemplate({name, content}) or addTestTemplate(name, content)
+    addTestTemplate(nameOrTemplate, content) {
+        const template = (typeof nameOrTemplate === 'string')
+            ? { name: nameOrTemplate, content: content || '' }
+            : nameOrTemplate;
         this.testTemplates.push(template);
     }
 
-    removeGlobalHeader(index) {
-        if (index >= 0 && index < this.globalHeaders.length) {
-            this.globalHeaders.splice(index, 1);
+    // Polymorphic: removeGlobalHeader(index:number) or removeGlobalHeader(key:string)
+    removeGlobalHeader(keyOrIndex) {
+        if (typeof keyOrIndex === 'number') {
+            if (keyOrIndex >= 0 && keyOrIndex < this.globalHeaders.length) {
+                this.globalHeaders.splice(keyOrIndex, 1);
+            }
+        } else {
+            this.globalHeaders = this.globalHeaders.filter(h => h.key !== keyOrIndex);
         }
     }
 
-    removeBaseEndpoint(index) {
-        if (index >= 0 && index < this.baseEndpoints.length) {
-            this.baseEndpoints.splice(index, 1);
+    // Polymorphic: removeBaseEndpoint(index:number) or removeBaseEndpoint(value:string)
+    removeBaseEndpoint(endpointOrIndex) {
+        if (typeof endpointOrIndex === 'number') {
+            if (endpointOrIndex >= 0 && endpointOrIndex < this.baseEndpoints.length) {
+                this.baseEndpoints.splice(endpointOrIndex, 1);
+            }
+        } else {
+            this.baseEndpoints = this.baseEndpoints.filter(e => e !== endpointOrIndex);
         }
     }
 
-    removeBodyTemplate(index) {
-        if (index >= 0 && index < this.bodyTemplates.length) {
-            this.bodyTemplates.splice(index, 1);
+    // Polymorphic: removeBodyTemplate(index:number) or removeBodyTemplate(name:string)
+    removeBodyTemplate(nameOrIndex) {
+        if (typeof nameOrIndex === 'number') {
+            if (nameOrIndex >= 0 && nameOrIndex < this.bodyTemplates.length) {
+                this.bodyTemplates.splice(nameOrIndex, 1);
+            }
+        } else {
+            this.bodyTemplates = this.bodyTemplates.filter(t => t.name !== nameOrIndex);
         }
     }
 
-    removeTestTemplate(index) {
-        if (index >= 0 && index < this.testTemplates.length) {
-            this.testTemplates.splice(index, 1);
+    // Polymorphic: removeTestTemplate(index:number) or removeTestTemplate(name:string)
+    removeTestTemplate(nameOrIndex) {
+        if (typeof nameOrIndex === 'number') {
+            if (nameOrIndex >= 0 && nameOrIndex < this.testTemplates.length) {
+                this.testTemplates.splice(nameOrIndex, 1);
+            }
+        } else {
+            this.testTemplates = this.testTemplates.filter(t => t.name !== nameOrIndex);
         }
+    }
+
+    // Bulk setter for global headers (used by app.js callers)
+    setGlobalHeaders(headers) {
+        this.globalHeaders = headers || [];
+    }
+
+    // Shallow-clone a request with global headers merged (used by app.js callers)
+    processRequest(req) {
+        return { ...req };
     }
 
     addRule(target, source, properties) {
