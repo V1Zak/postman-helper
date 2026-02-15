@@ -551,21 +551,21 @@ describe('Icon-only button labels', () => {
 // ===== Color contrast =====
 
 describe('Color contrast values', () => {
-    // Read the actual CSS from index.html
-    const htmlContent = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    // CSS is now in external styles.css (#123)
+    const cssContent = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
 
     it('light theme --text-muted is not #8b8b9e (was too low contrast)', () => {
         // The old value #8b8b9e had 3.7:1 ratio on white
-        assert.ok(!htmlContent.includes('--text-muted: #8b8b9e'), 'Old low-contrast value should be replaced');
+        assert.ok(!cssContent.includes('--text-muted: #8b8b9e'), 'Old low-contrast value should be replaced');
     });
 
     it('dark theme --text-muted is not #6e7681 (was too low contrast)', () => {
         // The old value #6e7681 had low contrast on dark bg
-        assert.ok(!htmlContent.includes('--text-muted: #6e7681'), 'Old low-contrast value should be replaced');
+        assert.ok(!cssContent.includes('--text-muted: #6e7681'), 'Old low-contrast value should be replaced');
     });
 
     it('light theme --text-muted uses a higher contrast value', () => {
-        const match = htmlContent.match(/--text-muted:\s*#([0-9a-fA-F]{6})/);
+        const match = cssContent.match(/--text-muted:\s*#([0-9a-fA-F]{6})/);
         assert.ok(match, 'Should define --text-muted');
         // The new value should be darker (lower hex = darker for light theme)
         assert.ok(match[1] !== '8b8b9e');

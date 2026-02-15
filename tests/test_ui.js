@@ -97,12 +97,13 @@ describe('UI: Collection Tree Default State', () => {
 
 describe('UI: Dialog CSS Styles', () => {
     it('has dialog-overlay styles defined', () => {
-        // Check the HTML has the dialog styles
-        const html = document.documentElement.outerHTML;
-        assert.ok(html.includes('.dialog-overlay'));
-        assert.ok(html.includes('.dialog-box'));
-        assert.ok(html.includes('.dialog-input'));
-        assert.ok(html.includes('.dialog-buttons'));
+        // CSS is now in external styles.css (#123)
+        const cssPath = path.join(__dirname, '..', 'styles.css');
+        const css = fs.readFileSync(cssPath, 'utf-8');
+        assert.ok(css.includes('.dialog-overlay'));
+        assert.ok(css.includes('.dialog-box'));
+        assert.ok(css.includes('.dialog-input'));
+        assert.ok(css.includes('.dialog-buttons'));
     });
 });
 
